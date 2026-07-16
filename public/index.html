@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>微信麻将 · 联机版</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background:#0a7d4f; color:#fff; user-select:none; -webkit-user-select:none; }
+  #app { max-width: 480px; margin: 0 auto; min-height: 100vh; display:flex; flex-direction:column; padding:6px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:2px 4px; }
+  .topbar button { background:#ffce54; border:none; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:600; color:#333; }
+  #msg { text-align:center; font-size:13px; min-height:18px; padding:2px; color:#ffe; }
+  .middle { display:flex; flex:1; gap:4px; align-items:stretch; }
+  .side { display:flex; flex-direction:column; justify-content:center; width:64px; }
+  .center { flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+  .opponent, .human { background:rgba(0,0,0,.12); border-radius:10px; padding:6px; margin:3px 0; }
+  .pname { font-size:12px; font-weight:600; margin-bottom:3px; }
+  .pname.active { color:#ffce54; }
+  .row, .hand-row, .discards, .melds { display:flex; flex-wrap:wrap; gap:2px; }
+  .melds { margin-bottom:3px; }
+  .meld { display:flex; gap:1px; padding:1px; background:rgba(0,0,0,.15); border-radius:4px; }
+  .discards { margin:3px 0; }
+  .tile { width:28px; height:38px; background:#fbfbf7; color:#222; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; line-height:1; box-shadow:0 1px 2px rgba(0,0,0,.35); border:1px solid #ddd; }
+  .tile.mini { width:20px; height:27px; font-size:11px; border-radius:4px; }
+  .tile.hand { width:30px; height:42px; font-size:16px; }
+  .tile.wan { color:#c0392b; } .tile.tiao { color:#1e8449; } .tile.tong { color:#2471a3; } .tile.zi { color:#333; }
+  .tile.zi.z-zhong { color:#c0392b; } .tile.zi.z-fa { color:#1e8449; } .tile.zi.z-bai { color:#2471a3; } .tile.zi.z-feng { color:#2c3e50; }
+  .tile-back { width:22px; height:30px; background:linear-gradient(135deg,#2c7a4b,#1c5c38); border-radius:4px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.15); }
+  .tile-back.mini { width:16px; height:22px; }
+  #actions { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; padding:6px; min-height:44px; }
+  .act-btn { background:#ffce54; color:#333; border:none; border-radius:8px; padding:8px 14px; font-size:15px; font-weight:700; min-width:64px; box-shadow:0 2px 0 #c9a227; }
+  .act-btn:active { transform:translateY(1px); box-shadow:0 1px 0 #c9a227; }
+  #overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); align-items:center; justify-content:center; z-index:50; padding:16px; }
+  .result-card { background:#fff; color:#222; border-radius:14px; padding:20px; max-width:360px; width:100%; text-align:center; max-height:86vh; overflow:auto; }
+  .result-card h2 { margin:0 0 10px; color:#c0392b; }
+  .result-card p { margin:6px 0; }
+  .res-hand { display:flex; flex-wrap:wrap; gap:2px; justify-content:center; margin:6px 0 12px; }
+  /* 大厅 */
+  #lobby { padding:10px; }
+  .card { background:rgba(0,0,0,.15); border-radius:12px; padding:14px; margin:8px 0; }
+  .card input { width:100%; padding:8px; border-radius:8px; border:none; font-size:15px; margin:6px 0; }
+  .card button { width:100%; background:#ffce54; color:#333; border:none; border-radius:8px; padding:10px; font-size:15px; font-weight:700; margin:4px 0; }
+  .seat { display:flex; justify-content:space-between; padding:6px 8px; background:rgba(255,255,255,.1); border-radius:8px; margin:4px 0; font-size:14px; }
+  .seat.empty { opacity:.5; }
+  .hidden { display:none !important; }
+  .code { font-size:22px; font-weight:800; letter-spacing:3px; color:#ffce54; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar"><span id="wallinfo">联机麻将</span><span><button onclick="backLobby()">大厅</button></span></div>
+  <div id="msg">未连接</div>
+
+  <div id="lobby">
+    <div class="card">
+      <div style="font-size:14px;opacity:.9">输入昵称后开始</div>
+      <input id="nameInput" placeholder="你的昵称" maxlength="8" value="玩家">
+      <button onclick="quickStart()">⚡ 快速开始（人机各半，缺人补机器人）</button>
+      <button onclick="createRoom()">创建房间（等人加入）</button>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="codeInput" placeholder="房间号" maxlength="4" style="flex:1">
+        <button style="width:auto;padding:10px 16px" onclick="joinRoom()">加入</button>
+      </div>
+    </div>
+    <div class="card hidden" id="roomCard">
+      <div>房间号：<span class="code" id="roomCode"></span> <button style="width:auto;padding:4px 8px;font-size:12px" onclick="copyCode()">复制</button></div>
+      <div id="seatList"></div>
+      <button id="startBtn" class="hidden" onclick="startGame()">开始游戏</button>
+      <div style="font-size:12px;opacity:.8;margin-top:6px">把房间号发给好友，对方选「加入」即可同场对战；空位会自动补机器人。</div>
+    </div>
+  </div>
+
+  <div id="game" class="hidden">
+    <div class="opponent" id="op-top"></div>
+    <div class="middle">
+      <div class="side opponent" id="op-left"></div>
+      <div class="center" id="center"></div>
+      <div class="side opponent" id="op-right"></div>
+    </div>
+    <div class="human" id="human"></div>
+    <div id="actions"></div>
+  </div>
+</div>
+<div id="overlay"></div>
+
+<script>
+// ===================== 工具 =====================
+function ti(t){ const s=t[0], r=+t.slice(1); if(s==='m') return r-1; if(s==='s') return 9+r-1; if(s==='p') return 18+r-1; return 27+r-1; }
+function tileLabel(t){ let s=t[0], r=+t.slice(1); if(s==='z') return ['东','南','西','北','中','發','白'][r-1]; const num=['一','二','三','四','五','六','七','八','九'][r-1]; const suit={m:'萬',s:'条',p:'筒'}[s]; return num+suit; }
+function tileClass(t){ return {m:'wan',s:'tiao',p:'tong',z:'zi'}[t[0]]; }
+function tileExtraClass(t){ if(t[0]!=='z') return ''; let r=+t.slice(1); return r===5?'z-zhong':r===6?'z-fa':r===7?'z-bai':'z-feng'; }
+function actionName(a){ return {hu:'胡',pung:'碰',kong:'杠',chow:'吃',pass:'过',zimo:'自摸'}[a]||a; }
+
+// ===================== WebSocket =====================
+let ws=null, mySeat=-1, myCode='';
+function connect(cb){
+  if(ws && ws.readyState===1){ cb&&cb(); return; }
+  const proto=location.protocol==='https:'?'wss':'ws';
+  ws=new WebSocket(proto+'//'+location.host);
+  ws.onopen=()=>{ setMsg('已连接'); cb&&cb(); };
+  ws.onclose=()=>{ setMsg('连接断开，请刷新'); };
+  ws.onmessage=(e)=>{ const m=JSON.parse(e.data); onMessage(m); };
+}
+function send(m){ if(ws && ws.readyState===1) ws.send(JSON.stringify(m)); }
+
+function quickStart(){ connect(()=>{ send({type:'quickstart', name:nameVal()}); }); }
+function createRoom(){ connect(()=>{ send({type:'create', name:nameVal()}); }); }
+function joinRoom(){ const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'join', name:nameVal(), code:c}); }); }
+function startGame(){ send({type:'start'}); }
+function nameVal(){ return (document.getElementById('nameInput').value||'玩家').trim()||'玩家'; }
+function copyCode(){ if(!myCode) return; navigator.clipboard && navigator.clipboard.writeText(myCode); setMsg('房间号已复制：'+myCode); }
+
+function onMessage(m){
+  if(m.type==='joined'){ mySeat=m.seat; myCode=m.code; showGame(); document.getElementById('roomCode').textContent=m.code; }
+  else if(m.type==='error'){ alert(m.msg); }
+  else if(m.type==='lobby'){ renderLobby(m); }
+  else if(m.type==='state'){ renderState(m); }
+}
+
+// ===================== 大厅渲染 =====================
+function showGame(){ document.getElementById('lobby').classList.add('hidden'); document.getElementById('game').classList.remove('hidden'); }
+function backLobby(){ document.getElementById('game').classList.add('hidden'); document.getElementById('lobby').classList.remove('hidden'); }
+function renderLobby(m){
+  document.getElementById('lobby').classList.remove('hidden'); document.getElementById('game').classList.add('hidden');
+  document.getElementById('roomCard').classList.remove('hidden');
+  document.getElementById('roomCode').textContent=m.code;
+  let html='';
+  for(let s=0;s<4;s++){ const p=m.players[s]; const empty=!p||!p.name;
+    html+='<div class="seat '+(empty?'empty':'')+'"><span>'+(empty?'空位（补机器人）':(p.name+(p.isBot?' 🤖':'')))+'</span>'+(s===m.host?'<span>房主</span>':'')+'</div>';
+  }
+  document.getElementById('seatList').innerHTML=html;
+  const startBtn=document.getElementById('startBtn');
+  if(mySeat===m.host && !m.started){ startBtn.classList.remove('hidden'); } else { startBtn.classList.add('hidden'); }
+}
+
+// ===================== 牌桌渲染 =====================
+function setMsg(t){ document.getElementById('msg').textContent=t; }
+function tileHTML(t, cls){ return '<div class="tile '+cls+' '+tileClass(t)+' '+tileExtraClass(t)+'">'+tileLabel(t)+'</div>'; }
+function backHTML(cls){ return '<div class="tile-back '+cls+'"></div>'; }
+function meldHTML(m){ let s='<div class="meld">'; for(const t of m.tiles) s+=tileHTML(t,'mini'); return s+'</div>'; }
+function seatHTML(p, isBottom){
+  let h='<div class="pname'+(turnSeat===p.seat?' active':'')+'">'+p.name+(p.isBot?' 🤖':'')+'（'+(isBottom?p.hand.length:p.handCount)+'张）</div>';
+  for(const m of p.melds) h+=meldHTML(m);
+  h+='<div class="discards">'; for(const t of p.discards) h+=tileHTML(t,'mini'); h+='</div>';
+  if(!isBottom){ h+='<div class="hand-row">'; for(let i=0;i<p.handCount;i++) h+=backHTML('mini'); h+='</div>'; }
+  return h;
+}
+
+let turnSeat=-1;
+function renderState(v){
+  mySeat=v.youSeat; turnSeat=v.turn;
+  document.getElementById('wallinfo').textContent='牌墙: '+v.wallCount;
+  const P=v.players;
+  const bottom=P[v.youSeat], right=P[(v.youSeat+1)%4], top=P[(v.youSeat+2)%4], left=P[(v.youSeat+3)%4];
+  document.getElementById('op-top').innerHTML=seatHTML(top,false);
+  document.getElementById('op-right').innerHTML=seatHTML(right,false);
+  document.getElementById('op-left').innerHTML=seatHTML(left,false);
+
+  // 底部（自己）
+  let h='<div class="pname'+(turnSeat===v.youSeat?' active':'')+'">'+bottom.name+'（'+bottom.hand.length+'张）</div>';
+  for(const m of bottom.melds) h+=meldHTML(m);
+  h+='<div class="discards">'; for(const t of bottom.discards) h+=tileHTML(t,'mini'); h+='</div>';
+  h+='<div class="hand-row" id="myHand">';
+  const canDiscard = v.yourActions && v.yourActions.type==='discard';
+  for(const t of bottom.hand){ h+='<div class="tile hand '+tileClass(t)+' '+tileExtraClass(t)+'"'+(canDiscard?' data-t="'+t+'"':'')+'>'+tileLabel(t)+'</div>'; }
+  h+='</div>';
+  document.getElementById('human').innerHTML=h;
+  if(canDiscard){ document.querySelectorAll('#myHand .tile').forEach(el=>{ el.style.cursor='pointer'; el.onclick=()=>send({type:'discard', tile:el.getAttribute('data-t')}); }); }
+
+  // 中央：最近打出
+  let c=document.getElementById('center'); c.innerHTML='';
+  if(v.lastDiscard){ const t=v.lastDiscard.tile; c.innerHTML=tileHTML(t,'hand')+'<div style="font-size:11px;opacity:.8;margin-top:4px">'+P[v.lastDiscard.seat].name+' 打出</div>'; }
+
+  renderActions(v);
+  if(v.winner) showResult(v); else document.getElementById('overlay').style.display='none';
+}
+
+function renderActions(v){
+  const bar=document.getElementById('actions'); bar.innerHTML='';
+  const ya=v.yourActions; if(!ya) return;
+  if(ya.type==='discard'){
+    for(const o of ya.self){
+      const b=document.createElement('button'); b.className='act-btn'; b.textContent=o.label;
+      if(o.action==='zimo') b.onclick=()=>send({type:'zimo'});
+      else b.onclick=()=>send({type:o.action, tile:o.tile});
+      bar.appendChild(b);
+    }
+  } else if(ya.type==='claim'){
+    for(const o of ya.options){
+      const b=document.createElement('button'); b.className='act-btn';
+      b.textContent = o.action==='chow' ? ('吃 '+tileLabel(o.tiles[0])+tileLabel(o.tiles[1])) : (o.label||actionName(o.action));
+      b.onclick=()=>send({type:'claim', action:o.action, tiles:o.tiles});
+      bar.appendChild(b);
+    }
+    const pass=document.createElement('button'); pass.className='act-btn'; pass.textContent='过'; pass.onclick=()=>send({type:'claim', action:'pass'}); bar.appendChild(pass);
+  }
+}
+
+function showResult(v){
+  const w=v.winner; let html='<div class="result-card">';
+  if(w.draw){ html+='<h2>流局</h2><p>牌墙已摸完，本局荒庄。</p>'; }
+  else { html+='<h2>'+(w.selfDraw?'自摸胡牌！':'胡牌！')+'</h2>';
+    for(const info of w.info){ html+='<p><b>'+info.name+'</b>：'+info.fan+'</p><div class="res-hand">'; for(const t of info.hand) html+=tileHTML(t,'mini'); html+='</div>'; }
+  }
+  html+='<button class="act-btn" onclick="send({type:\'again\'})">再来一局</button></div>';
+  const ov=document.getElementById('overlay'); ov.innerHTML=html; ov.style.display='flex';
+}
+</script>
+</body>
+</html>

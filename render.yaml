@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: wechat-mahjong
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        sync: false
+        value: "10000"

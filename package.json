@@ -1,0 +1,12 @@
+{
+  "name": "wechat-mahjong-mp",
+  "version": "1.0.0",
+  "description": "微信联机麻将（国标简化版）：Node + ws 服务端权威逻辑，人+机器人补位",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.21.1"
+  }
+}
