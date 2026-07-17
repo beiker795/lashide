@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
+const ddz = require('./ddz.js');
 
 // ----------------- 基础工具（与已验证引擎一致） -----------------
 function ti(t){ const s=t[0], r=+t.slice(1); if(s==='m') return r-1; if(s==='s') return 9+r-1; if(s==='p') return 18+r-1; return 27+r-1; }
@@ -438,9 +439,9 @@ function buildLobby(room){
   return { type:'lobby', code:room.code, host:room.host, mode:room.mode||'gb', started: !!(room.game && room.game.phase!=='over'),
     players: room.players.map((p,s)=>({seat:s, name:p?p.name:null, isBot:p?p.isBot:false, connected:p?p.connected:false})) };
 }
-function send(ws, obj){ if(ws && ws.readyState===1) ws.send(JSON.stringify(obj)); }
+function send(ws, obj){ if(ws && ws.readyState===1){ try { ws.send(JSON.stringify(obj)); } catch(e){} } }
 // 向房间内所有人（含观战）广播一个独立的动作事件，供客户端播放语音
-function announce(room, payload){ const msg=JSON.stringify({type:'action', ...payload}); for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) p.ws.send(msg); } for(const sp of (room.spectators||[])) if(sp.ws) sp.ws.send(msg); }
+function announce(room, payload){ let msg; try { msg=JSON.stringify({type:'action', ...payload}); } catch(e){ return; } for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) p.ws.send(msg); } for(const sp of (room.spectators||[])) if(sp.ws) sp.ws.send(msg); }
 function broadcast(room){ for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) send(p.ws, buildView(room,s)); } for(const sp of (room.spectators||[])) send(sp.ws, buildSpectatorView(room)); }
 function broadcastLobby(room){ for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) send(p.ws, buildLobby(room)); } for(const sp of (room.spectators||[])) send(sp.ws, buildSpectatorView(room)); }
 
@@ -452,7 +453,18 @@ const server = http.createServer((req,res)=>{
       if(e){ res.writeHead(404); res.end('not found'); return; }
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}); res.end(data);
     });
-  } else { res.writeHead(404); res.end('not found'); }
+    return;
+  }
+  // 静态资源（public 下）：ddz.html、voices/* 等
+  let f = path.normalize(path.join(__dirname,'public', url));
+  let pub = path.join(__dirname,'public');
+  if(f.startsWith(pub) && fs.existsSync(f) && fs.statSync(f).isFile()){
+    let ext=path.extname(f).toLowerCase();
+    let ct = ext==='.html'?'text/html': ext==='.js'?'application/javascript': ext==='.css'?'text/css': ext==='.json'?'application/json': ext==='.mp3'?'audio/mpeg':'application/octet-stream';
+    res.writeHead(200,{'Content-Type':ct+'; charset=utf-8'}); res.end(fs.readFileSync(f));
+    return;
+  }
+  res.writeHead(404); res.end('not found');
 });
 const wss = new WebSocket.Server({ server });
 
@@ -462,12 +474,18 @@ wss.on('connection', (ws)=>{
   ws.roomCode=null; ws.seat=null;
   ws.on('message', (raw)=>{
     let m; try{ m=JSON.parse(raw); }catch(e){ return; }
-    handleMsg(ws, m);
+    try { handleMsg(ws, m); } catch (e) {}
   });
-  ws.on('close', ()=>handleDisconnect(ws));
+  ws.on('close', (code, reason)=>{ handleDisconnect(ws); });
+  ws.on('error', (e)=>{});
 });
+process.on('uncaughtException', (e)=>{});
+process.on('unhandledRejection', (e)=>{});
 
 function handleMsg(ws, m){
+  // 多游戏路由：ddz 房间的消息交给 ddz.js 全权处理（麻将路径不受影响）
+  const room = ws.roomCode ? rooms[ws.roomCode] : null;
+  if((m.game==='ddz') || (room && room.gameType==='ddz')){ ddz.handle(ws, m, room); return; }
   if(m.type==='quickstart'){
     let code=genCode(); while(rooms[code]) code=genCode();
     let room={ code, host:0, mode:(m.mode||'gb'), players:[null,null,null,null], scores:[0,0,0,0], spectators:[] };
@@ -573,6 +591,7 @@ function handleMsg(ws, m){
 
 function handleDisconnect(ws){
   let room=rooms[ws.roomCode]; if(!room) return;
+  if(room.gameType==='ddz'){ ddz.handleDisconnect(ws, room); return; }
   if(ws.seat===-1){ let i=(room.spectators||[]).indexOf(ws); if(i>=0) room.spectators.splice(i,1); return; }
   let seat=ws.seat; if(seat==null) return;
   let p=room.players[seat];
@@ -594,4 +613,5 @@ function handleDisconnect(ws){
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, ()=>{ console.log('麻将服务器已启动: http://localhost:'+PORT); });
+ddz.init({ send, announce, rooms }); // 注入共享工具，供 ddz 模块复用广播与动作播报
+server.listen(PORT, ()=>{ console.log('麻将/斗地主服务器已启动: http://localhost:'+PORT); });

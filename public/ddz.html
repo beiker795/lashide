@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>联机斗地主</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; font-family: -apple-system, system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; background:#0b6b3a; color:#fff; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:#085041; font-size:14px; }
+  .topbar button { background:#fff; color:#085041; border:none; border-radius:6px; padding:4px 10px; font-size:13px; cursor:pointer; }
+  .hidden { display:none !important; }
+  .center { display:flex; flex-direction:column; align-items:center; gap:12px; padding:24px 16px; }
+  input, select { padding:8px; border-radius:6px; border:1px solid #ccc; font-size:14px; width:200px; }
+  .btn { background:#ffd54a; color:#7a4b00; border:none; border-radius:8px; padding:10px 18px; font-size:15px; font-weight:600; cursor:pointer; }
+  .btn.ghost { background:#fff; color:#085041; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  /* 牌桌 */
+  #game { padding:8px; min-height:100vh; display:flex; flex-direction:column; }
+  .info { display:flex; justify-content:space-between; font-size:13px; padding:2px 6px; }
+  .seats { flex:1; position:relative; display:flex; flex-direction:column; gap:6px; }
+  .seat { background:rgba(0,0,0,.18); border-radius:8px; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; }
+  .seat.landlord { outline:2px solid #ffd54a; }
+  .seat .name { font-size:13px; }
+  .seat .cnt { font-size:12px; opacity:.85; }
+  .seat .role { font-size:11px; color:#ffd54a; }
+  .played { display:flex; gap:2px; flex-wrap:wrap; min-height:30px; align-items:center; }
+  .center-area { min-height:46px; display:flex; align-items:center; justify-content:center; }
+  .lastplay { display:flex; gap:2px; }
+  /* 牌 */
+  .card { width:30px; height:42px; background:#fff; color:#222; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.3); user-select:none; }
+  .card.red { color:#d33; }
+  .card.jokerS { color:#444; } .card.jokerB { color:#d33; }
+  .card.sel { transform:translateY(-10px); outline:2px solid #ffd54a; }
+  #myHand { display:flex; gap:3px; flex-wrap:wrap; justify-content:center; padding:6px; min-height:48px; }
+  #actions { display:flex; gap:8px; justify-content:center; padding:8px; flex-wrap:wrap; }
+  .bidbtn { background:#ffd54a; color:#7a4b00; border:none; border-radius:8px; padding:8px 14px; font-size:14px; font-weight:600; cursor:pointer; }
+  .passbtn { background:#fff; color:#555; border:none; border-radius:8px; padding:8px 14px; font-size:14px; cursor:pointer; }
+  .playbtn { background:#e53935; color:#fff; border:none; border-radius:8px; padding:8px 18px; font-size:14px; font-weight:600; cursor:pointer; }
+  /* 结算 */
+  #result { position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; padding:20px; }
+  #result .box { background:#fff; color:#222; border-radius:12px; padding:18px; width:280px; text-align:center; }
+  #result h3 { margin:0 0 8px; }
+  #result p { margin:4px 0; font-size:14px; }
+  .turndot { width:8px; height:8px; border-radius:50%; background:#ffd54a; display:inline-block; margin-left:4px; }
+</style>
+</head>
+<body>
+<div class="topbar"><span>🃏 联机斗地主</span><span><button id="voiceBtn" onclick="toggleVoice()" title="语音开关">🔊</button><button onclick="backLobby()">大厅</button></span></div>
+
+<div id="lobby" class="center">
+  <h2>斗地主</h2>
+  <input id="name" placeholder="昵称" value="">
+  <div class="row">
+    <button class="btn" onclick="quickStartDdz()">快速开始</button>
+    <button class="btn ghost" onclick="createRoom()">建房</button>
+  </div>
+  <div class="row">
+    <input id="codeInput" placeholder="房间号" maxlength="4" style="width:120px">
+    <button class="btn ghost" onclick="joinRoom()">加入</button>
+    <button class="btn ghost" onclick="spectateRoom()">观战</button>
+  </div>
+  <p style="font-size:12px;opacity:.8">积分：<span id="scoreView">0</span>（按昵称保存）</p>
+  <p style="font-size:12px;opacity:.7">在微信里把本页链接发给朋友即可多人同玩</p>
+</div>
+
+<div id="game" class="hidden">
+  <div class="info">
+    <span id="infoLeft">地主：—</span>
+    <span id="infoRight">倍数 ×1</span>
+  </div>
+  <div class="seats">
+    <div class="seat" id="seatTop"><span><span class="name"></span> <span class="role"></span><span class="turn"></span></span><span class="cnt"></span></div>
+    <div class="center-area"><div class="lastplay" id="lastPlay"></div></div>
+    <div class="seat" id="seatLeft"><span><span class="name"></span> <span class="role"></span><span class="turn"></span></span><span class="cnt"></span></div>
+    <div class="seat" id="seatSelf"><span><span class="name"></span> <span class="role"></span><span class="turn"></span></span><span class="cnt"></span></div>
+  </div>
+  <div id="myHand"></div>
+  <div id="actions"></div>
+</div>
+
+<div id="result" class="hidden"><div class="box" id="resultBox"></div></div>
+
+<script>
+let ws=null, mySeat=-1, myCode='', curState=null;
+let voiceOn=true, _voiceReady=false;
+const VOICE_FILES={}; // 升级真人录音：把 mp3 放进 public/voices/ 后填 {zhadan:'voices/zhadan.mp3',wangzha:'voices/wangzha.mp3'}
+function unlockVoice(){ if(_voiceReady) return; try{ const u=new SpeechSynthesisUtterance(''); u.volume=0; speechSynthesis.speak(u); speechSynthesis.cancel(); _voiceReady=true; }catch(e){} }
+function sayWord(text, key){
+  if(!voiceOn) return; unlockVoice();
+  try{
+    if(VOICE_FILES[key]){ const a=new Audio(VOICE_FILES[key]); a.play().catch(()=>{}); return; }
+    const u=new SpeechSynthesisUtterance(text); u.lang='zh-CN'; u.rate=1.15; u.pitch=1;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }catch(e){}
+}
+function playActionVoice(m){
+  const map={zhadan:['炸弹！','zhadan'],wangzha:['王炸！','wangzha'],landlord:['地主','landlord']};
+  const it=map[m.action]; if(it) sayWord(it[0], it[1]);
+}
+function toggleVoice(){ voiceOn=!voiceOn; const b=document.getElementById('voiceBtn'); if(b) b.textContent=voiceOn?'🔊':'🔇'; if(!voiceOn){ try{ speechSynthesis.cancel(); }catch(e){} } }
+
+// 积分持久化（按昵称）
+function getStoredScore(name){ try{ return parseInt(localStorage.getItem('ddz_score_'+name)||'0',10)||0; }catch(e){ return 0; } }
+function saveScore(name, s){ try{ localStorage.setItem('ddz_score_'+name, String(s)); }catch(e){} }
+
+function nameVal(){ return (document.getElementById('name').value||'玩家').trim()||'玩家'; }
+function connect(onopen){
+  if(ws && ws.readyState===1){ onopen&&onopen(); return; }
+  const proto = location.protocol==='https:'?'wss':'ws';
+  ws = new WebSocket(proto+'://'+location.host);
+  ws.onopen = ()=>{ onopen&&onopen(); };
+  ws.onmessage = (ev)=>{ let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } onMessage(m); };
+  ws.onclose = ()=>{};
+}
+function send(o){ if(ws && ws.readyState===1) ws.send(JSON.stringify(o)); }
+function quickStartDdz(){ unlockVoice(); connect(()=>{ send({type:'quickstart', game:'ddz', name:nameVal(), score:getStoredScore(nameVal())}); }); }
+function createRoom(){ unlockVoice(); connect(()=>{ send({type:'create', game:'ddz', name:nameVal(), score:getStoredScore(nameVal())}); }); }
+function joinRoom(){ unlockVoice(); const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'join', game:'ddz', name:nameVal(), code:c, score:getStoredScore(nameVal())}); }); }
+function spectateRoom(){ const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'spectate', game:'ddz', name:nameVal(), code:c}); }); }
+function backLobby(){
+  if(ws) send({type:'leave'});
+  document.getElementById('game').classList.add('hidden');
+  document.getElementById('lobby').classList.remove('hidden');
+  document.getElementById('result').classList.add('hidden');
+  mySeat=-1;
+}
+
+function onMessage(m){
+  if(m.type==='joined'){ mySeat=m.seat; myCode=m.code; showGame(); }
+  else if(m.type==='error'){ alert(m.msg); }
+  else if(m.type==='lobby'){ renderLobby(m); }
+  else if(m.type==='state'){ renderState(m); }
+  else if(m.type==='action'){ playActionVoice(m); }
+}
+
+function showGame(){ document.getElementById('lobby').classList.add('hidden'); document.getElementById('game').classList.remove('hidden'); }
+function renderLobby(m){
+  document.getElementById('lobby').classList.remove('hidden');
+  document.getElementById('game').classList.add('hidden');
+  document.getElementById('scoreView').textContent = getStoredScore(nameVal());
+}
+function seatByIdx(i){ return ['seatSelf','seatLeft','seatTop'][i]; }
+
+function cardHTML(c, sel){
+  let cls='card', disp, txt;
+  if(c==='X'){ cls+=' jokerS'; txt='小王'; }
+  else if(c==='D'){ cls+=' jokerB'; txt='大王'; }
+  else { if('23456789'.includes(c[0])||['10','J','Q','K','A','2'].includes(c)) cls+=' red'; txt=c; }
+  if(sel) cls+=' sel';
+  return '<span class="'+cls+'" data-t="'+c+'">'+txt+'</span>';
+}
+
+function renderState(m){
+  curState=m;
+  const g=m;
+  document.getElementById('infoLeft').textContent = '地主：'+(g.landlord!=null? g.players[g.landlord].name : (g.phase==='bidding'?'叫分中…':'—'));
+  document.getElementById('infoRight').textContent = '倍数 ×'+(g.multiplier||1);
+  // 座位
+  for(let s=0;s<3;s++){
+    const el=document.getElementById(seatByIdx(s)); if(!el) continue;
+    const p=g.players[s];
+    el.querySelector('.name').textContent = p.name + (s===mySeat?'（你）':'');
+    el.querySelector('.role').textContent = p.isLandlord?'【地主】':'';
+    el.querySelector('.cnt').textContent = '剩'+p.handCount+'张';
+    el.querySelector('.turn').innerHTML = (g.turn===s && g.phase!=='over')?'<span class="turndot"></span>':'';
+    el.classList.toggle('landlord', !!p.isLandlord);
+    // 出牌区：显示该玩家最近一手
+    const played=el.querySelector('.played');
+    if(played){
+      const pp = p.played && p.played.length ? p.played[p.played.length-1].cards : [];
+      played.innerHTML = pp.map(c=>cardHTML(c,false)).join('');
+    }
+  }
+  // 上家（对家）出牌区单独显示在 center-area 已由 played 渲染
+  const lp=document.getElementById('lastPlay');
+  if(lp){
+    if(g.lastPlay){ lp.innerHTML = g.lastPlay.cards.map(c=>cardHTML(c,false)).join(''); }
+    else lp.innerHTML='';
+  }
+  // 自己的手牌
+  const hh=document.getElementById('myHand');
+  hh.innerHTML='';
+  if(g.players[mySeat] && g.players[mySeat].hand){
+    for(const c of g.players[mySeat].hand){
+      const sp=document.createElement('span');
+      sp.innerHTML=cardHTML(c,false);
+      const card=sp.firstChild;
+      card.onclick=()=>{ if(curState.yourActions&&curState.yourActions.type==='play'){ card.classList.toggle('sel'); } };
+      hh.appendChild(card);
+    }
+  }
+  renderActions(m);
+  if(g.winner){ showResult(g.winner, g.players); }
+  else document.getElementById('result').classList.add('hidden');
+}
+
+function renderActions(m){
+  const a=document.getElementById('actions'); a.innerHTML='';
+  const ya=m.yourActions;
+  if(ya && ya.type==='bid'){
+    const b=document.createElement('button'); b.className='passbtn'; b.textContent='不叫'; b.onclick=()=>send({type:'bid',score:0}); a.appendChild(b);
+    for(let s=ya.min;s<=ya.max;s++){ const bb=document.createElement('button'); bb.className='bidbtn'; bb.textContent=s+'分'; bb.onclick=()=>send({type:'bid',score:s}); a.appendChild(bb); }
+  } else if(ya && ya.type==='play'){
+    const sel=()=>Array.from(document.querySelectorAll('#myHand .card.sel')).map(e=>e.getAttribute('data-t')).filter(Boolean);
+    const play=document.createElement('button'); play.className='playbtn'; play.textContent='出牌'; play.onclick=()=>{ const cs=sel(); if(!cs.length){ alert('请选择要出的牌'); return; } send({type:'play', cards:cs}); };
+    a.appendChild(play);
+    if(ya.canPass){ const ps=document.createElement('button'); ps.className='passbtn'; ps.textContent='不出'; ps.onclick=()=>send({type:'pass'}); a.appendChild(ps); }
+  }
+}
+
+function showResult(w, players){
+  const box=document.getElementById('resultBox');
+  const winName = players[w.winnerSeat]? players[w.winnerSeat].name : '?';
+  let html='<h3>'+(w.winnerSeat===w.landlord?'地主胜':'农民胜')+'</h3>';
+  html+='<p>赢家：'+winName+'</p>';
+  html+='<p>底分 '+w.base+' × 倍数 '+w.mult+'</p>';
+  for(let s=0;s<3;s++){
+    const d=w.deltas[s]; const me=(s===mySeat)?'（你）':'';
+    html+='<p>'+players[s].name+me+'：'+(d>=0?'+':'')+d+' 分　累计 '+(w.scores[s]||0)+'</p>';
+  }
+  box.innerHTML=html;
+  const again=document.createElement('button'); again.className='btn'; again.textContent='再来一局'; again.onclick=()=>{ document.getElementById('result').classList.add('hidden'); send({type:'again'}); };
+  box.appendChild(again);
+  // 保存积分
+  if(mySeat>=0 && players[mySeat]) saveScore(nameVal(), w.scores[mySeat]||0);
+  document.getElementById('result').classList.remove('hidden');
+}
+
+// 初始显示积分
+document.getElementById('scoreView').textContent = getStoredScore(nameVal());
+document.getElementById('name').addEventListener('input', ()=>{ document.getElementById('scoreView').textContent=getStoredScore(nameVal()); });
+</script>
+</body>
+</html>
