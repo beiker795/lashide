@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>联机棋牌室 · 主页</title>
+<style>
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; padding:0; }
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; background:#0a7d4f; color:#fff; min-height:100vh; }
+  .wrap { max-width:480px; margin:0 auto; padding:22px 18px 40px; display:flex; flex-direction:column; min-height:100vh; }
+  .brand { text-align:center; margin:14px 0 4px; }
+  .brand .logo { font-size:48px; }
+  .brand h1 { margin:8px 0 2px; font-size:24px; letter-spacing:3px; color:#ffce54; }
+  .brand p { margin:0; font-size:13px; opacity:.82; }
+  .games { display:flex; flex-direction:column; gap:14px; margin-top:28px; }
+  .game-card { display:flex; align-items:center; gap:14px; background:rgba(0,0,0,.18); border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:16px; cursor:pointer; transition:transform .12s, box-shadow .12s; }
+  .game-card:active { transform:scale(.98); }
+  .game-card:hover { box-shadow:0 0 0 2px rgba(255,206,84,.55); }
+  .game-card .ico { font-size:40px; width:58px; height:58px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.08); border-radius:14px; flex-shrink:0; }
+  .game-card .meta { flex:1; }
+  .game-card .meta h3 { margin:0 0 3px; font-size:18px; }
+  .game-card .meta span { font-size:12px; opacity:.8; line-height:1.35; display:block; }
+  .game-card .arrow { font-size:24px; opacity:.55; }
+  .soon { margin-top:18px; opacity:.5; }
+  .soon .game-card { cursor:default; }
+  .soon .game-card:hover { box-shadow:none; }
+  .foot { margin-top:auto; padding-top:26px; text-align:center; font-size:11px; opacity:.55; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="logo">🀄</div>
+    <h1>联机棋牌室</h1>
+    <p>和朋友在微信里随时随地开一局</p>
+  </div>
+
+  <div class="games">
+    <div class="game-card" onclick="location.href='index.html'">
+      <div class="ico">🀄</div>
+      <div class="meta"><h3>麻将</h3><span>国标 / 广东 / 四川血战 · 联机对战</span></div>
+      <div class="arrow">›</div>
+    </div>
+    <div class="game-card" onclick="location.href='ddz.html'">
+      <div class="ico">🃏</div>
+      <div class="meta"><h3>斗地主</h3><span>三人围坐 · 叫分 · 炸弹翻倍</span></div>
+      <div class="arrow">›</div>
+    </div>
+  </div>
+
+  <div class="soon">
+    <div class="game-card">
+      <div class="ico">🎲</div>
+      <div class="meta"><h3>更多游戏</h3><span>即将上线…</span></div>
+      <div class="arrow">›</div>
+    </div>
+  </div>
+
+  <div class="foot">本地语音播报 · 积分累计 · 多端同步</div>
+</div>
+</body>
+</html>

@@ -448,7 +448,14 @@ function broadcastLobby(room){ for(let s=0;s<4;s++){ let p=room.players[s]; if(p
 // ----------------- 连接与消息处理 -----------------
 const server = http.createServer((req,res)=>{
   let url = req.url.split('?')[0];
-  if(url==='/' || url==='/index.html'){
+  if(url==='/'){
+    fs.readFile(path.join(__dirname,'public','home.html'),(e,data)=>{
+      if(e){ res.writeHead(404); res.end('not found'); return; }
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}); res.end(data);
+    });
+    return;
+  }
+  if(url==='/index.html'){
     fs.readFile(path.join(__dirname,'public','index.html'),(e,data)=>{
       if(e){ res.writeHead(404); res.end('not found'); return; }
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}); res.end(data);
