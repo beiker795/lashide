@@ -62,6 +62,7 @@
       <div style="display:flex;gap:6px;margin-top:6px">
         <input id="codeInput" placeholder="房间号" maxlength="4" style="flex:1">
         <button style="width:auto;padding:10px 16px" onclick="joinRoom()">加入</button>
+        <button style="width:auto;padding:10px 16px" onclick="spectateRoom()">👁 观战</button>
       </div>
     </div>
     <div class="card hidden" id="roomCard">
@@ -105,12 +106,15 @@ function connect(cb){
 }
 function send(m){ if(ws && ws.readyState===1) ws.send(JSON.stringify(m)); }
 
-function quickStart(){ connect(()=>{ send({type:'quickstart', name:nameVal()}); }); }
-function createRoom(){ connect(()=>{ send({type:'create', name:nameVal()}); }); }
-function joinRoom(){ const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'join', name:nameVal(), code:c}); }); }
+function quickStart(){ connect(()=>{ send({type:'quickstart', name:nameVal(), score:getStoredScore(nameVal())}); }); }
+function createRoom(){ connect(()=>{ send({type:'create', name:nameVal(), score:getStoredScore(nameVal())}); }); }
+function joinRoom(){ const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'join', name:nameVal(), code:c, score:getStoredScore(nameVal())}); }); }
+function spectateRoom(){ const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'spectate', name:nameVal(), code:c}); }); }
 function startGame(){ send({type:'start'}); }
 function nameVal(){ return (document.getElementById('nameInput').value||'玩家').trim()||'玩家'; }
 function copyCode(){ if(!myCode) return; navigator.clipboard && navigator.clipboard.writeText(myCode); setMsg('房间号已复制：'+myCode); }
+function getStoredScore(name){ let v=0; try{ v=parseInt(localStorage.getItem('mj_score_'+name))||0; }catch(e){} return v; }
+function setStoredScore(name, score){ try{ localStorage.setItem('mj_score_'+name, String(score)); }catch(e){} }
 
 function onMessage(m){
   if(m.type==='joined'){ mySeat=m.seat; myCode=m.code; showGame(); document.getElementById('roomCode').textContent=m.code; }
@@ -121,7 +125,7 @@ function onMessage(m){
 
 // ===================== 大厅渲染 =====================
 function showGame(){ document.getElementById('lobby').classList.add('hidden'); document.getElementById('game').classList.remove('hidden'); }
-function backLobby(){ document.getElementById('game').classList.add('hidden'); document.getElementById('lobby').classList.remove('hidden'); }
+function backLobby(){ document.getElementById('game').classList.add('hidden'); document.getElementById('lobby').classList.remove('hidden'); if(mySeat===-1){ send({type:'leave'}); } mySeat=-1; }
 function renderLobby(m){
   document.getElementById('lobby').classList.remove('hidden'); document.getElementById('game').classList.add('hidden');
   document.getElementById('roomCard').classList.remove('hidden');
@@ -147,11 +151,42 @@ function seatHTML(p, isBottom){
   if(!isBottom){ h+='<div class="hand-row">'; for(let i=0;i<p.handCount;i++) h+=backHTML('mini'); h+='</div>'; }
   return h;
 }
+function seatHTMLFull(p){
+  if(!p||!p.name) return '<div class="pname empty">空位</div>';
+  let h='<div class="pname'+(turnSeat===p.seat?' active':'')+'">'+p.name+(p.isBot?' 🤖':'')+'（'+(p.hand?p.hand.length:p.handCount)+'张） <span style="color:#ffce54">'+(curScores[p.seat]||0)+'分</span></div>';
+  for(const m of (p.melds||[])) h+=meldHTML(m);
+  h+='<div class="discards">'; for(const t of (p.discards||[])) h+=tileHTML(t,'mini'); h+='</div>';
+  h+='<div class="hand-row">'; for(const t of (p.hand||[])) h+='<div class="tile mini '+tileClass(t)+' '+tileExtraClass(t)+'">'+tileLabel(t)+'</div>'; h+='</div>';
+  return h;
+}
+function renderSpectator(v){
+  const P=v.players;
+  document.getElementById('wallinfo').textContent='👁 观战中 · 牌墙:'+v.wallCount;
+  const top=P[1], right=P[0], left=P[2], bottom=P[3];
+  document.getElementById('op-top').innerHTML=seatHTMLFull(top);
+  document.getElementById('op-right').innerHTML=seatHTMLFull(right);
+  document.getElementById('op-left').innerHTML=seatHTMLFull(left);
+  let h='<div class="pname" style="color:#ffce54">👁 观战中（你不是玩家）</div>';
+  if(bottom && bottom.name){
+    h+='<div class="pname">'+bottom.name+(bottom.isBot?' 🤖':'')+'（'+(bottom.hand?bottom.hand.length:bottom.handCount)+'张） <span style="color:#ffce54">'+(v.scores[3]||0)+'分</span></div>';
+    for(const m of (bottom.melds||[])) h+=meldHTML(m);
+    h+='<div class="discards">'; for(const t of (bottom.discards||[])) h+=tileHTML(t,'mini'); h+='</div>';
+    h+='<div class="hand-row" id="myHand">'; for(const t of (bottom.hand||[])) h+='<div class="tile hand '+tileClass(t)+' '+tileExtraClass(t)+'">'+tileLabel(t)+'</div>'; h+='</div>';
+  }
+  document.getElementById('human').innerHTML=h;
+  let c=document.getElementById('center'); c.innerHTML='';
+  if(v.lastDiscard){ const t=v.lastDiscard.tile; c.innerHTML=tileHTML(t,'hand')+'<div style="font-size:11px;opacity:.8;margin-top:4px">'+(P[v.lastDiscard.seat]?P[v.lastDiscard.seat].name:'')+' 打出</div>'; }
+  renderActions(v);
+  if(v.winner) showResult(v); else document.getElementById('overlay').style.display='none';
+}
 
 let turnSeat=-1;
 let curScores=[0,0,0,0];
+let resultProcessed=false;
 function renderState(v){
+  if(!v.winner) resultProcessed=false;
   mySeat=v.youSeat; turnSeat=v.turn; curScores=v.scores||[0,0,0,0];
+  if(mySeat<0){ renderSpectator(v); return; }
   document.getElementById('wallinfo').textContent='牌墙: '+v.wallCount;
   const P=v.players;
   const bottom=P[v.youSeat], right=P[(v.youSeat+1)%4], top=P[(v.youSeat+2)%4], left=P[(v.youSeat+3)%4];
@@ -200,7 +235,14 @@ function renderActions(v){
 }
 
 function showResult(v){
-  const w=v.winner; let html='<div class="result-card">';
+  if(resultProcessed) return;
+  resultProcessed=true;
+  const w=v.winner;
+  if(!w.draw && mySeat>=0){
+    const nm=nameVal(); const d=(w.deltas&&w.deltas[mySeat])||0;
+    setStoredScore(nm, getStoredScore(nm)+d);
+  }
+  let html='<div class="result-card">';
   if(w.draw){ html+='<h2>流局</h2><p>牌墙已摸完，本局荒庄。</p>'; }
   else { html+='<h2>'+(w.selfDraw?'自摸胡牌！':'胡牌！')+'</h2>';
     for(const info of w.info){ html+='<p><b>'+info.name+'</b> '+info.fan+' <span style="color:#c0392b">+'+(info.delta)+'分</span></p><div class="res-hand">'; for(const t of info.hand) html+=tileHTML(t,'mini'); html+='</div>'; }

@@ -302,13 +302,30 @@ function buildView(room, seat){
     } : null
   };
 }
+function buildSpectatorView(room){
+  const g=room.game;
+  let players=room.players.map((p,s)=>({
+    seat:s, name:p?p.name:null, isBot:p?p.isBot:false, connected:p?p.connected:false,
+    handCount:p&&p.hand?p.hand.length:0,
+    hand: (p&&p.hand)? p.hand.slice().sort((a,b)=>ti(a)-ti(b)) : null,
+    melds:(p&&p.melds)?p.melds:[], discards:(p&&p.discards)?p.discards:[]
+  }));
+  let winner=null;
+  if(g && g.winner){
+    winner={ draw:!!g.winner.draw, winners:g.winner.winners, tile:g.winner.tile, selfDraw:g.winner.selfDraw,
+      scores:g.winner.scores, deltas:g.winner.deltas,
+      info: g.winner.draw?[]:g.winner.winners.map(w=>({seat:w, name:g.players[w].name, fan:winInfo(g,w,g.winner.tile,g.winner.selfDraw), fanNum:computeFan(g,w,g.winner.tile,g.winner.selfDraw), delta:g.winner.deltas[w], hand:g.players[w].hand.concat([g.winner.tile]) })) };
+  }
+  return { type:'state', youSeat:-1, turn: g?g.turn:-1, wallCount: g?g.wall.length:0, phase: g?g.phase:'lobby',
+    scores: room.scores||[0,0,0,0], lastDiscard: g?g.lastDiscard:null, players, yourActions:null, winner };
+}
 function buildLobby(room){
   return { type:'lobby', code:room.code, host:room.host, started: !!(room.game && room.game.phase!=='over'),
     players: room.players.map((p,s)=>({seat:s, name:p?p.name:null, isBot:p?p.isBot:false, connected:p?p.connected:false})) };
 }
 function send(ws, obj){ if(ws && ws.readyState===1) ws.send(JSON.stringify(obj)); }
-function broadcast(room){ for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) send(p.ws, buildView(room,s)); } }
-function broadcastLobby(room){ for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) send(p.ws, buildLobby(room)); } }
+function broadcast(room){ for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) send(p.ws, buildView(room,s)); } for(const sp of (room.spectators||[])) send(sp.ws, buildSpectatorView(room)); }
+function broadcastLobby(room){ for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) send(p.ws, buildLobby(room)); } for(const sp of (room.spectators||[])) send(sp.ws, buildSpectatorView(room)); }
 
 // ----------------- 连接与消息处理 -----------------
 const server = http.createServer((req,res)=>{
@@ -336,9 +353,10 @@ wss.on('connection', (ws)=>{
 function handleMsg(ws, m){
   if(m.type==='quickstart'){
     let code=genCode(); while(rooms[code]) code=genCode();
-    let room={ code, host:0, players:[null,null,null,null], scores:[0,0,0,0] };
+    let room={ code, host:0, players:[null,null,null,null], scores:[0,0,0,0], spectators:[] };
     rooms[code]=room;
     room.players[0]={ ws, name:(m.name||'玩家')+'', isBot:false, connected:true, seat:0 };
+    room.scores[0]=m.score||0;
     ws.roomCode=code; ws.seat=0;
     send(ws,{type:'joined', code, seat:0});
     startGame(room);
@@ -346,9 +364,10 @@ function handleMsg(ws, m){
   }
   if(m.type==='create'){
     let code=genCode(); while(rooms[code]) code=genCode();
-    let room={ code, host:0, players:[null,null,null,null], scores:[0,0,0,0] };
+    let room={ code, host:0, players:[null,null,null,null], scores:[0,0,0,0], spectators:[] };
     rooms[code]=room;
     room.players[0]={ ws, name:(m.name||'玩家')+'', isBot:false, connected:true, seat:0 };
+    room.scores[0]=m.score||0;
     ws.roomCode=code; ws.seat=0;
     send(ws,{type:'joined', code, seat:0});
     broadcastLobby(room);
@@ -361,9 +380,20 @@ function handleMsg(ws, m){
     let seat=findEmptySeat(room);
     if(seat<0){ send(ws,{type:'error', msg:'房间已满'}); return; }
     room.players[seat]={ ws, name:(m.name||'玩家')+'', isBot:false, connected:true, seat };
+    room.scores[seat]=m.score||0;
     ws.roomCode=room.code; ws.seat=seat;
     send(ws,{type:'joined', code:room.code, seat});
     broadcastLobby(room);
+    return;
+  }
+  if(m.type==='spectate'){
+    let room=rooms[m.code];
+    if(!room){ send(ws,{type:'error', msg:'房间不存在'}); return; }
+    ws.roomCode=room.code; ws.seat=-1; ws.isSpectator=true;
+    room.spectators=room.spectators||[];
+    room.spectators.push(ws);
+    send(ws,{type:'joined', code:room.code, seat:-1});
+    send(ws, buildSpectatorView(room));
     return;
   }
   if(m.type==='start'){
@@ -416,6 +446,7 @@ function handleMsg(ws, m){
 
 function handleDisconnect(ws){
   let room=rooms[ws.roomCode]; if(!room) return;
+  if(ws.seat===-1){ let i=(room.spectators||[]).indexOf(ws); if(i>=0) room.spectators.splice(i,1); return; }
   let seat=ws.seat; if(seat==null) return;
   let p=room.players[seat];
   if(!p) return;
