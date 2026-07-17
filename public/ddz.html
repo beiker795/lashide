@@ -108,9 +108,12 @@ function nameVal(){ return (document.getElementById('name').value||'玩家').tri
 function connect(onopen){
   if(ws && ws.readyState===1){ onopen&&onopen(); return; }
   const proto = location.protocol==='https:'?'wss':'ws';
-  ws = new WebSocket(proto+'://'+location.host);
+  const host = location.host || 'localhost:3000';
+  const url = proto+'://'+host;
+  ws = new WebSocket(url);
   ws.onopen = ()=>{ onopen&&onopen(); };
   ws.onmessage = (ev)=>{ let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } onMessage(m); };
+  ws.onerror = (e)=>{ console.error('WS error', e); if(ws.readyState===3) alert('连接失败：请确认服务器已启动（localhost:3000）\n'+(location.protocol==='file:'?'当前是本地文件打开，请通过 http://localhost:3000/ddz.html 访问':'')); };
   ws.onclose = ()=>{};
 }
 function send(o){ if(ws && ws.readyState===1) ws.send(JSON.stringify(o)); }
