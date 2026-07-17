@@ -8,14 +8,16 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; }
   body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background:#0a7d4f; color:#fff; user-select:none; -webkit-user-select:none; }
-  #app { max-width: 480px; margin: 0 auto; min-height: 100vh; display:flex; flex-direction:column; padding:6px; }
-  .topbar { display:flex; justify-content:space-between; align-items:center; font-size:15px; padding:6px 6px; }
+  #app { max-width: 520px; margin: 0 auto; min-height: 100vh; display:flex; flex-direction:column; padding:10px 14px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; font-size:15px; padding:8px 6px; }
   .topbar button { background:#ffce54; border:none; border-radius:8px; padding:6px 12px; font-size:15px; font-weight:700; color:#333; }
-  #msg { text-align:center; font-size:13px; min-height:18px; padding:2px; color:#ffe; }
-  .middle { display:flex; flex:1; gap:4px; align-items:stretch; }
-  .side { display:flex; flex-direction:column; justify-content:center; width:64px; }
-  .center { flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; }
-  .opponent, .human { background:rgba(0,0,0,.12); border-radius:10px; padding:8px; margin:3px 0; }
+  #msg { text-align:center; font-size:13px; min-height:18px; padding:4px 2px; color:#ffe; }
+  .middle { display:flex; flex:1; gap:12px; align-items:stretch; }
+  .side { display:flex; flex-direction:column; justify-content:center; width:72px; }
+  .center { flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; margin:0 6px; }
+  .opponent, .human { background:rgba(0,0,0,.12); border-radius:10px; padding:10px; margin:8px 0; }
+  #op-top { margin-bottom:10px; }
+  #human { margin-top:10px; }
   .pname { font-size:13px; font-weight:600; margin-bottom:3px; }
   .pname.active { color:#ffce54; }
   .row, .hand-row, .discards, .melds { display:flex; flex-wrap:wrap; gap:3px; }
