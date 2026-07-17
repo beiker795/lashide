@@ -16,7 +16,9 @@ function playOne(m){
       if(msg.type!=='state') return;
       if(seenWall===null && msg.phase==='turn') seenWall = msg.wallCount;
       const ya = msg.yourActions;
-      if(ya && ya.type==='discard'){
+      if(ya && ya.type==='dingque'){
+        ws.send(JSON.stringify({type:'dingque', suit:'m'}));
+      } else if(ya && ya.type==='discard'){
         const hand = (msg.players[msg.youSeat]||{}).hand;
         if(hand) ws.send(JSON.stringify({type:'discard', tile:hand[0]}));
       } else if(ya && ya.type==='claim'){

@@ -153,7 +153,7 @@ function tileHTML(t, cls){ return '<div class="tile '+cls+' '+tileClass(t)+' '+t
 function backHTML(cls){ return '<div class="tile-back '+cls+'"></div>'; }
 function meldHTML(m){ let s='<div class="meld">'; for(const t of m.tiles) s+=tileHTML(t,'mini'); return s+'</div>'; }
 function seatHTML(p, isBottom){
-  let h='<div class="pname'+(turnSeat===p.seat?' active':'')+'">'+p.name+(p.isBot?' 🤖':'')+'（'+(isBottom?p.hand.length:p.handCount)+'张） <span style="color:#ffce54">'+(curScores[p.seat]||0)+'分</span></div>';
+  let h='<div class="pname'+(turnSeat===p.seat?' active':'')+'">'+p.name+(p.isBot?' 🤖':'')+(p.hu?' 🀄':'')+'（'+(isBottom?p.hand.length:p.handCount)+'张） <span style="color:#ffce54">'+(curScores[p.seat]||0)+'分</span></div>';
   for(const m of p.melds) h+=meldHTML(m);
   h+='<div class="discards">'; for(const t of p.discards) h+=tileHTML(t,'mini'); h+='</div>';
   if(!isBottom){ h+='<div class="hand-row">'; for(let i=0;i<p.handCount;i++) h+=backHTML('mini'); h+='</div>'; }
@@ -161,7 +161,7 @@ function seatHTML(p, isBottom){
 }
 function seatHTMLFull(p){
   if(!p||!p.name) return '<div class="pname empty">空位</div>';
-  let h='<div class="pname'+(turnSeat===p.seat?' active':'')+'">'+p.name+(p.isBot?' 🤖':'')+'（'+(p.hand?p.hand.length:p.handCount)+'张） <span style="color:#ffce54">'+(curScores[p.seat]||0)+'分</span></div>';
+  let h='<div class="pname'+(turnSeat===p.seat?' active':'')+'">'+p.name+(p.isBot?' 🤖':'')+(p.hu?' 🀄':'')+'（'+(p.hand?p.hand.length:p.handCount)+'张） <span style="color:#ffce54">'+(curScores[p.seat]||0)+'分</span></div>';
   for(const m of (p.melds||[])) h+=meldHTML(m);
   h+='<div class="discards">'; for(const t of (p.discards||[])) h+=tileHTML(t,'mini'); h+='</div>';
   h+='<div class="hand-row">'; for(const t of (p.hand||[])) h+='<div class="tile mini '+tileClass(t)+' '+tileExtraClass(t)+'">'+tileLabel(t)+'</div>'; h+='</div>';
@@ -178,7 +178,7 @@ function renderSpectator(v){
   document.getElementById('op-left').innerHTML=seatHTMLFull(left);
   let h='<div class="pname" style="color:#ffce54">👁 观战中（你不是玩家）</div>';
   if(bottom && bottom.name){
-    h+='<div class="pname">'+bottom.name+(bottom.isBot?' 🤖':'')+'（'+(bottom.hand?bottom.hand.length:bottom.handCount)+'张） <span style="color:#ffce54">'+(v.scores[3]||0)+'分</span></div>';
+    h+='<div class="pname">'+bottom.name+(bottom.isBot?' 🤖':'')+(bottom.hu?' 🀄':'')+'（'+(bottom.hand?bottom.hand.length:bottom.handCount)+'张） <span style="color:#ffce54">'+(v.scores[3]||0)+'分</span></div>';
     for(const m of (bottom.melds||[])) h+=meldHTML(m);
     h+='<div class="discards">'; for(const t of (bottom.discards||[])) h+=tileHTML(t,'mini'); h+='</div>';
     h+='<div class="hand-row" id="myHand">'; for(const t of (bottom.hand||[])) h+='<div class="tile hand '+tileClass(t)+' '+tileExtraClass(t)+'">'+tileLabel(t)+'</div>'; h+='</div>';
@@ -228,6 +228,15 @@ function renderState(v){
 function renderActions(v){
   const bar=document.getElementById('actions'); bar.innerHTML='';
   const ya=v.yourActions; if(!ya) return;
+  if(ya.type==='dingque'){
+    const dn={m:'万',s:'条',p:'筒'};
+    for(const suit of ya.options){
+      const b=document.createElement('button'); b.className='act-btn'; b.textContent='定缺 '+dn[suit];
+      b.onclick=()=>send({type:'dingque', suit});
+      bar.appendChild(b);
+    }
+    return;
+  }
   if(ya.type==='discard'){
     for(const o of ya.self){
       const b=document.createElement('button'); b.className='act-btn'; b.textContent=o.label;
@@ -251,11 +260,22 @@ function showResult(v){
   resultProcessed=true;
   const w=v.winner;
   if(!w.draw && mySeat>=0){
-    const nm=nameVal(); const d=(w.deltas&&w.deltas[mySeat])||0;
+    const nm=nameVal();
+    let d;
+    if(w.scEnd && w.roundDeltas){ d = w.roundDeltas[mySeat]||0; }
+    else { d = (w.deltas&&w.deltas[mySeat])||0; }
     setStoredScore(nm, getStoredScore(nm)+d);
   }
   let html='<div class="result-card">';
-  if(w.draw){ html+='<h2>流局</h2><p>牌墙已摸完，本局荒庄。</p>'; }
+  if(w.scEnd){
+    html+='<h2>血战到底 · 结束</h2>';
+    if(w.huInfos && w.huInfos.length){
+      for(const info of w.huInfos){ html+='<p><b>'+info.name+'</b> '+info.fan+(info.selfDraw?' <span style="color:#2471a3">自摸</span>':'')+' <span style="color:#c0392b">+'+(info.delta)+'分</span></p>'; }
+    } else {
+      html+='<p>本局无人胡牌（流局）</p>';
+    }
+    if(w.deltas && w.deltas.some(x=>x!==0)) html+='<p style="font-size:12px;color:#888">含查叫结算，见积分榜</p>';
+  } else if(w.draw){ html+='<h2>流局</h2><p>牌墙已摸完，本局荒庄。</p>'; }
   else { html+='<h2>'+(w.selfDraw?'自摸胡牌！':'胡牌！')+'</h2>';
     for(const info of w.info){ html+='<p><b>'+info.name+'</b> '+info.fan+' <span style="color:#c0392b">+'+(info.delta)+'分</span></p><div class="res-hand">'; for(const t of info.hand) html+=tileHTML(t,'mini'); html+='</div>'; }
   }

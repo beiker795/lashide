@@ -67,7 +67,7 @@ function shuffle(a){ for(let i=a.length-1;i>0;i--){ let j=Math.floor(Math.random
 
 function isAllPung(c){ let pairs=0; for(let i=0;i<34;i++){ if(c[i]!==0 && c[i]!==2 && c[i]!==3) return false; if(c[i]===2) pairs++; } return pairs===1; }
 function winInfo(g, seat, tile, selfDraw){
-  let pl=g.players[seat]; let all=pl.hand.slice(); all.push(tile);
+  let pl=g.players[seat]; let all=pl.hand.slice(); if(!selfDraw) all.push(tile);
   let c=toCounts(all), melds=pl.melds, labels=[];
   if(selfDraw) labels.push('自摸');
   if(melds.length===0){ let pairs=0, ok=true; for(let i=0;i<34;i++){ if(c[i]%2!==0){ok=false;break;} if(c[i]===2) pairs++; } if(ok && pairs===7) labels.push('七对'); }
@@ -79,7 +79,7 @@ function winInfo(g, seat, tile, selfDraw){
 }
 // 数值番数（用于积分）
 function computeFan(g, seat, tile, selfDraw){
-  let pl=g.players[seat]; let all=pl.hand.slice(); all.push(tile);
+  let pl=g.players[seat]; let all=pl.hand.slice(); if(!selfDraw) all.push(tile);
   let c=toCounts(all), melds=pl.melds; let fan=1;
   if(selfDraw) fan+=1;
   if(melds.length===0){ let pairs=0, ok=true; for(let i=0;i<34;i++){ if(c[i]%2!==0){ok=false;break;} if(c[i]===2) pairs++; } if(ok && pairs===7) fan+=2; }
@@ -95,34 +95,73 @@ function genCode(){ const cs='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(l
 
 function newGame(room){
   const mode=room.mode||'gb';
-  const g={ mode, wall: shuffle(buildWall(mode)), players: room.players, turn:0, drawnTile:null, lastDiscard:null, phase:'play', winner:null };
+  const g={ mode, wall: shuffle(buildWall(mode)), players: room.players, turn:0, drawnTile:null, lastDiscard:null, phase:'play', winner:null,
+    dingQue: (mode==='sc')?[null,null,null,null]:null, huPlayers: (mode==='sc')?[]:null };
   room.game=g; room.awaiting=null; room.pendingClaims=null; room.awaitTimer=null;
-  for(let s=0;s<4;s++){ let p=g.players[s]; p.hand=[]; p.melds=[]; p.discards=[]; }
+  for(let s=0;s<4;s++){ let p=g.players[s]; p.hand=[]; p.melds=[]; p.discards=[]; p.hu=false; p.huInfo=null; }
   for(let i=0;i<13;i++) for(let s=0;s<4;s++) g.players[s].hand.push(g.wall.pop());
   for(let s=0;s<4;s++) sortHand(g,s);
   g.turn=0;
+  g.startScores = room.scores ? room.scores.slice() : [0,0,0,0];
+  if(mode==='sc') startDingQue(room);
+}
+function startDingQue(room){
+  const g=room.game;
+  for(let s=0;s<4;s++){ if(g.players[s].isBot) g.dingQue[s]=botPickDingQue(g,s); }
+  if(g.dingQue.every(x=>x!==null)) startPlay(room);
+  else { g.phase='dingque'; broadcast(room); }
+}
+function botPickDingQue(g, seat){
+  let cnt=[0,0,0]; const hand=g.players[seat].hand;
+  for(const t of hand){ const i='msp'.indexOf(t[0]); if(i>=0) cnt[i]++; }
+  let min=0; for(let i=1;i<3;i++) if(cnt[i]<cnt[min]) min=i;
+  return 'msp'[min];
+}
+function startPlay(room){ const g=room.game; g.phase='play'; g.turn=0; proceedTurn(room); }
+// 血战：能否胡（已定缺且无缺门牌）
+function canHuScWith(g, seat, allTiles){
+  if(!g.dingQue || g.dingQue[seat]===null) return false;
+  const dq=g.dingQue[seat];
+  for(const t of allTiles){ if(t[0]===dq) return false; }
+  for(const m of g.players[seat].melds){ for(const t of m.tiles){ if(t[0]===dq) return false; } }
+  return true;
+}
+// 血战：是否听牌（差一张能胡）
+function isTingpai(g, seat){
+  const pl=g.players[seat]; const hand=pl.hand.slice(); const dq=g.dingQue?g.dingQue[seat]:null;
+  for(let i=0;i<hand.length;i++){
+    let h2=hand.slice(); h2.splice(i,1);
+    for(let k=0;k<34;k++){
+      let suit = k<9?'m':(k<18?'s':(k<27?'p':'z'));
+      if(g.mode==='sc' && suit==='z') continue;
+      if(dq && suit===dq) continue;
+      let c=toCounts(h2); c[k]++; if(isWinningHand(c)) return true;
+    }
+  }
+  return false;
 }
 function startGame(room){
   // 空位填机器人
   let bi=0;
   for(let s=0;s<4;s++){ if(!room.players[s]){ bi++; room.players[s]={ ws:null, name:'机器人'+String.fromCharCode(64+bi), isBot:true, connected:true, seat:s }; } }
   newGame(room);
-  proceedTurn(room);
+  if((room.mode||'gb')!=='sc') proceedTurn(room);
 }
 function restartGame(room){ startGame(room); }
 
 function proceedTurn(room){
   const g=room.game;
   if(g.phase==='over') return;
-  let seat=g.turn;
   if(g.wall.length===0){ endRoundDraw(room); return; }
+  let seat=g.turn;
+  if(g.huPlayers && g.huPlayers.includes(seat)){ g.turn=(seat+1)%4; return proceedTurn(room); }
   let tile=g.wall.pop(); g.players[seat].hand.push(tile); g.drawnTile=tile; sortHand(g,seat); g.phase='turn';
   if(g.players[seat].isBot){ setTimeout(()=>botTurn(room,seat), 600); }
   else { room.awaiting={seat, kind:'discard'}; broadcast(room); }
 }
 function botTurn(room, seat){
   const g=room.game; const pl=g.players[seat];
-  if(isWinningHand(toCounts(pl.hand))){ endRound(room,[seat], g.drawnTile, true); return; }
+  if(g.drawnTile && isWinningHand(toCounts(pl.hand)) && (g.mode!=='sc' || canHuScWith(g,seat,pl.hand))){ endRound(room,[seat], g.drawnTile, true); return; }
   let c=toCounts(pl.hand);
   for(let i=0;i<34;i++){ if(c[i]>=4){ doAnKong(room,seat,fromIndex(i)); return; } }
   if(g.drawnTile){ let di=ti(g.drawnTile); for(const m of pl.melds){ if(m.type==='pung'&&ti(m.tiles[0])===di){ doBuKong(room,seat,g.drawnTile); return; } } }
@@ -163,7 +202,7 @@ function doDiscard(room, seat, tile){
 function claimOptionsFor(g, seat, tile, fromSeat){
   let hand=g.players[seat].hand, c=toCounts(hand), idx=ti(tile), opts=[];
   let test=hand.slice(); test.push(tile);
-  if(isWinningHand(toCounts(test))) opts.push({action:'hu'});
+  if(isWinningHand(toCounts(test)) && (g.mode!=='sc' || canHuScWith(g,seat,test))) opts.push({action:'hu'});
   if(c[idx]===3) opts.push({action:'kong'});
   if(c[idx]>=2){
     let r=+tile.slice(1); let isJunk=(tile[0]==='z')||r===1||r===9;
@@ -189,7 +228,7 @@ function botClaimChoice(g, seat, tile, fromSeat){
 function onDiscard(room, seat, tile){
   const g=room.game;
   let possible={};
-  for(let p=0;p<4;p++){ if(p===seat) continue; let o=claimOptionsFor(g,p,tile,seat); if(o.length) possible[p]=o; }
+  for(let p=0;p<4;p++){ if(p===seat) continue; if(g.huPlayers && g.huPlayers.includes(p)) continue; let o=claimOptionsFor(g,p,tile,seat); if(o.length) possible[p]=o; }
   let botChoices=[], humanSeats=[], optionsBySeat={};
   for(let p in possible){
     optionsBySeat[p]=possible[p];
@@ -249,7 +288,9 @@ function executeClaim(room, claim, tile, fromSeat){
   }
 }
 function endRound(room, winners, tile, selfDraw){
-  const g=room.game; g.phase='over'; g.winner={winners, tile, selfDraw}; room.awaiting=null; room.pendingClaims=null;
+  const g=room.game;
+  if(g.mode==='sc'){ endRoundSc(room, winners, tile, selfDraw); return; }
+  g.phase='over'; g.winner={winners, tile, selfDraw}; room.awaiting=null; room.pendingClaims=null;
   if(room.awaitTimer) clearTimeout(room.awaitTimer);
   if(!room.scores) room.scores=[0,0,0,0];
   let deltas=[0,0,0,0];
@@ -270,24 +311,95 @@ function endRound(room, winners, tile, selfDraw){
   g.winner.deltas=deltas;
   broadcast(room);
 }
+// 血战到底结算（支持续打 + 查叫）
+function computeFanSc(g, seat, tile, selfDraw){
+  let pl=g.players[seat]; let all=pl.hand.slice(); if(!selfDraw) all.push(tile);
+  let c=toCounts(all), melds=pl.melds; let fan=1;
+  if(selfDraw) fan+=1;
+  let isQiDui=(melds.length===0);
+  if(isQiDui){ let pairs=0, ok=true; for(let i=0;i<34;i++){ if(c[i]%2!==0){ok=false;break;} if(c[i]===2) pairs++; } if(ok && pairs===7) fan+=2; }
+  if(!melds.some(m=>m.type==='chow') && isAllPung(c)) fan+=2;
+  let suits=new Set(all.map(t=>t[0]));
+  if(suits.size===1){ fan+=4; if(isQiDui) fan+=2; }
+  return fan;
+}
+function endRoundSc(room, winners, tile, selfDraw){
+  const g=room.game;
+  if(!room.scores) room.scores=[0,0,0,0];
+  let deltas=[0,0,0,0];
+  for(const w of winners){
+    g.players[w].hu=true;
+    if(!g.huPlayers.includes(w)) g.huPlayers.push(w);
+    let F=computeFanSc(g,w,tile,selfDraw);
+    g.players[w].huInfo={tile, selfDraw, fan:F, name:g.players[w].name};
+    if(selfDraw){
+      for(let p=0;p<4;p++){ if(p!==w && !g.players[p].hu){ deltas[w]+=F; deltas[p]-=F; } }
+    } else {
+      let discarder=g.lastDiscard?g.lastDiscard.seat:-1;
+      if(discarder>=0 && !g.players[discarder].hu){ deltas[w]+=F; deltas[discarder]-=F; }
+    }
+  }
+  for(let p=0;p<4;p++) room.scores[p]+=deltas[p];
+  if(g.huPlayers.length>=3 || g.wall.length===0){
+    g.phase='over';
+    let cd=[0,0,0,0];
+    if(g.wall.length===0 && g.huPlayers.length<4){
+      let ting=[], notTing=[];
+      for(let p=0;p<4;p++){ if(!g.players[p].hu){ if(isTingpai(g,p)) ting.push(p); else notTing.push(p); } }
+      for(const np of notTing){ for(const tp of ting){ cd[tp]+=1; cd[np]-=1; } }
+      for(let p=0;p<4;p++) room.scores[p]+=cd[p];
+    }
+    const huInfos=g.players.map((p,s)=>p.huInfo?{seat:s,name:p.name,fan:winInfo(g,s,p.huInfo.tile,p.huInfo.selfDraw),fanNum:p.huInfo.fan,delta:deltas[s]||0,selfDraw:p.huInfo.selfDraw}:null).filter(Boolean);
+    g.winner={ scEnd:true, winners:g.huPlayers.slice(), huInfos, deltas: cd.some(x=>x!==0)?cd:deltas, roundDeltas: room.scores.map((s,i)=>s-(g.startScores?g.startScores[i]:0)), scores:room.scores.slice() };
+    broadcast(room);
+    return;
+  }
+  // 续打：本局继续，轮到下家
+  g.phase='play'; g.winner=null;
+  let from = selfDraw ? winners[0] : (g.lastDiscard?g.lastDiscard.seat:-1);
+  g.turn=(from+1)%4;
+  broadcast(room);
+  setTimeout(()=>proceedTurn(room), 400);
+}
 function endRoundDraw(room){
-  const g=room.game; g.phase='over'; g.winner={draw:true}; room.awaiting=null; room.pendingClaims=null;
+  const g=room.game;
+  if(g.mode==='sc'){ endRoundSc(room, [], null, false); return; }
+  g.phase='over'; g.winner={draw:true}; room.awaiting=null; room.pendingClaims=null;
   broadcast(room);
 }
 
 // ----------------- 视图与广播 -----------------
+function buildWinnerInfo(g){
+  if(!g.winner) return null;
+  if(g.winner.scEnd){
+    return { scEnd:true, winners:g.winner.winners, huInfos:g.winner.huInfos, deltas:g.winner.deltas, roundDeltas:g.winner.roundDeltas, scores:g.winner.scores };
+  }
+  const win=g.winner;
+  return {
+    draw: !!win.draw, winners:win.winners, tile:win.tile, selfDraw:win.selfDraw,
+    scores: win.scores, deltas: win.deltas,
+    info: win.draw ? [] : win.winners.map(w=>({
+      seat:w, name:g.players[w].name,
+      fan: winInfo(g,w,win.tile,win.selfDraw), fanNum: computeFan(g,w,win.tile,win.selfDraw),
+      delta: win.deltas[w],
+      hand: win.selfDraw ? g.players[w].hand.slice() : g.players[w].hand.concat([win.tile])
+    }))
+  };
+}
 function buildView(room, seat){
   const g=room.game;
   let players=g.players.map((p,s)=>({
-    seat:s, name:p.name, isBot:p.isBot, connected:p.connected,
+    seat:s, name:p.name, isBot:p.isBot, connected:p.connected, hu:!!p.hu,
     handCount:p.hand.length,
     hand: s===seat ? p.hand.slice().sort((a,b)=>ti(a)-ti(b)) : null,
     melds:p.melds, discards:p.discards
   }));
   let yourActions=null;
-  if(room.awaiting && room.awaiting.seat===seat){
+  if(g.phase==='dingque' && g.dingQue && g.dingQue[seat]===null && !g.players[seat].isBot){
+    yourActions={type:'dingque', options:['m','s','p']};
+  } else if(room.awaiting && room.awaiting.seat===seat){
     let self=[]; let pl=g.players[seat];
-    if(isWinningHand(toCounts(pl.hand))) self.push({action:'zimo',label:'自摸胡'});
+    if(isWinningHand(toCounts(pl.hand)) && (g.mode!=='sc' || canHuScWith(g,seat,pl.hand))) self.push({action:'zimo',label:'自摸胡'});
     let c=toCounts(pl.hand);
     for(let i=0;i<34;i++){ if(c[i]>=4) self.push({action:'ankong',tile:fromIndex(i),label:'暗杠 '+fromIndex(i)}); }
     if(g.drawnTile){ let di=ti(g.drawnTile); for(const m of pl.melds){ if(m.type==='pung'&&ti(m.tiles[0])===di) self.push({action:'bukong',tile:g.drawnTile,label:'补杠 '+g.drawnTile}); } }
@@ -298,11 +410,7 @@ function buildView(room, seat){
   return { type:'state', youSeat:seat, turn:g.turn, wallCount:g.wall.length, phase:g.phase, mode:g.mode,
     scores: room.scores || [0,0,0,0],
     lastDiscard:g.lastDiscard, players, yourActions,
-    winner: g.winner ? {
-      draw: !!g.winner.draw, winners:g.winner.winners, tile:g.winner.tile, selfDraw:g.winner.selfDraw,
-      scores: g.winner.scores, deltas: g.winner.deltas,
-      info: g.winner.draw ? [] : g.winner.winners.map(w=>({seat:w, name:g.players[w].name, fan:winInfo(g,w,g.winner.tile,g.winner.selfDraw), fanNum:computeFan(g,w,g.winner.tile,g.winner.selfDraw), delta:g.winner.deltas[w], hand:g.players[w].hand.concat([g.winner.tile]) }))
-    } : null
+    winner: buildWinnerInfo(g)
   };
 }
 function buildSpectatorView(room){
@@ -315,9 +423,7 @@ function buildSpectatorView(room){
   }));
   let winner=null;
   if(g && g.winner){
-    winner={ draw:!!g.winner.draw, winners:g.winner.winners, tile:g.winner.tile, selfDraw:g.winner.selfDraw,
-      scores:g.winner.scores, deltas:g.winner.deltas,
-      info: g.winner.draw?[]:g.winner.winners.map(w=>({seat:w, name:g.players[w].name, fan:winInfo(g,w,g.winner.tile,g.winner.selfDraw), fanNum:computeFan(g,w,g.winner.tile,g.winner.selfDraw), delta:g.winner.deltas[w], hand:g.players[w].hand.concat([g.winner.tile]) })) };
+    winner=buildWinnerInfo(g);
   }
   return { type:'state', youSeat:-1, turn: g?g.turn:-1, wallCount: g?g.wall.length:0, phase: g?g.phase:'lobby',
     mode: g?g.mode:'gb', scores: room.scores||[0,0,0,0], lastDiscard: g?g.lastDiscard:null, players, yourActions:null, winner };
@@ -397,6 +503,16 @@ function handleMsg(ws, m){
     room.spectators.push(ws);
     send(ws,{type:'joined', code:room.code, seat:-1});
     send(ws, buildSpectatorView(room));
+    return;
+  }
+  if(m.type==='dingque'){
+    let room=rooms[ws.roomCode]; if(!room||!room.game) return;
+    const g=room.game;
+    if(g.phase!=='dingque' || !g.dingQue || g.dingQue[ws.seat]!==null) return;
+    if(!['m','s','p'].includes(m.suit)) return;
+    g.dingQue[ws.seat]=m.suit;
+    if(g.dingQue.every(x=>x!==null)) startPlay(room);
+    else broadcast(room);
     return;
   }
   if(m.type==='start'){
