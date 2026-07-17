@@ -92,11 +92,12 @@ function newGame(room) {
   }
   room.gameType = 'ddz';
   room.maxPlayers = 3;
+  if (room.firstBidder === undefined) room.firstBidder = 0; // 首叫座位（逆时针轮换）
   let deck = shuffle(newDeck());
   let g = {
     type: 'ddz', phase: 'bidding', landlord: null, turn: 0,
     bottomCards: deck.slice(0, 3),
-    bids: [null, null, null], lastBid: 0, bidTurn: 0, bidCount: 0,
+    bids: [null, null, null], lastBid: 0, bidTurn: room.firstBidder, bidCount: 0,
     lastPlay: null, passCount: 0, multiplier: 1,
     winner: null, startScores: room.scores ? room.scores.slice() : [0, 0, 0]
   };
@@ -288,6 +289,8 @@ function endRound(room, winnerSeat) {
   }
   if (!room.scores) room.scores = [0, 0, 0];
   for (let s = 0; s < 3; s++) room.scores[s] += deltas[s];
+  // 下一局首叫座位逆时针轮换（向右：0→2→1→0）
+  room.firstBidder = (room.firstBidder + 2) % 3;
   g.phase = 'over'; g.winner = {
     winnerSeat, landlord, base, mult, deltas, scores: room.scores.slice(),
     roundDeltas: room.scores.map((s, i) => s - (g.startScores ? g.startScores[i] : 0))

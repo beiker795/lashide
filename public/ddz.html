@@ -23,6 +23,7 @@
   .seat .head { display:flex; justify-content:space-between; align-items:center; gap:6px; }
   .seat .name { font-size:13px; }
   .seat .cnt { font-size:12px; opacity:.85; }
+  .seat .sc { font-size:12px; color:#ffd54a; margin-left:4px; }
   .seat .role { font-size:11px; color:#ffd54a; }
   .seat .played { display:flex; gap:2px; flex-wrap:wrap; min-height:30px; align-items:center; }
   .seat.landlord { outline:2px solid #ffd54a; }
@@ -76,15 +77,15 @@
   </div>
   <div class="table">
     <div class="seat" id="seatTop">
-      <div class="head"><span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span></div>
+      <div class="head"><span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span><span class="sc"></span></div>
       <div class="played"></div>
     </div>
     <div class="seat" id="seatLeft">
-      <div class="head"><span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span></div>
+      <div class="head"><span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span><span class="sc"></span></div>
       <div class="played"></div>
     </div>
     <div class="seat" id="seatSelf">
-      <div class="head"><span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span></div>
+      <div class="head"><span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span><span class="sc"></span></div>
       <div class="played"></div>
     </div>
     <div class="center-area"><div class="lastplay" id="lastPlay"></div></div>
@@ -180,6 +181,7 @@ function renderState(m){
     el.querySelector('.name').textContent = p.name + (s===mySeat?'（你）':'');
     el.querySelector('.role').textContent = p.isLandlord?'【地主】':'';
     el.querySelector('.cnt').textContent = '剩'+p.handCount+'张';
+    const scEl=el.querySelector('.sc'); if(scEl) scEl.textContent = '分 '+(g.scores?g.scores[s]:0);
     el.querySelector('.turn').innerHTML = (g.turn===s && g.phase!=='over')?'<span class="turndot"></span>':'';
     el.classList.toggle('landlord', !!p.isLandlord);
     // 出牌区：显示该玩家最近一手
