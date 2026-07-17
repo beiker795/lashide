@@ -46,6 +46,16 @@
   .seat.empty { opacity:.5; }
   .hidden { display:none !important; }
   .code { font-size:22px; font-weight:800; letter-spacing:3px; color:#ffce54; }
+  /* 动画：弃牌落子 + 回合光晕 + 胡牌皇冠（对应斗地主筹码/地主特效） */
+  #center .tile.drop { animation: tileDrop .4s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes tileDrop { 0%{ transform:scale(.5) translateY(-18px); opacity:0; } 60%{ opacity:1; } 100%{ transform:scale(1) translateY(0); } }
+  #center.flash { animation: centerFlash .5s ease; }
+  @keyframes centerFlash { 0%{ filter:none; } 30%{ filter:drop-shadow(0 0 12px #ffd54a); } 100%{ filter:none; } }
+  .active-glow { animation: turnGlow 1.5s ease-in-out infinite; border-radius:10px; }
+  @keyframes turnGlow { 0%,100%{ box-shadow:0 0 6px 1px rgba(255,206,84,.5); } 50%{ box-shadow:0 0 16px 4px rgba(255,206,84,.9); } }
+  .seat-win > .pname::before { content:'👑 '; }
+  .seat-win { animation: winGlow 1.6s ease-in-out infinite; border-radius:10px; }
+  @keyframes winGlow { 0%,100%{ box-shadow:0 0 8px 2px rgba(255,206,84,.6); } 50%{ box-shadow:0 0 20px 6px rgba(255,206,84,.95); } }
 </style>
 </head>
 <body>
@@ -169,6 +179,29 @@ function renderLobby(m){
 
 // ===================== 牌桌渲染 =====================
 function setMsg(t){ document.getElementById('msg').textContent=t; }
+// 座位特效（回合光晕 / 胡牌皇冠）与中央弃牌落子动画
+function seatEls(){ return [document.getElementById('human'), document.getElementById('op-right'), document.getElementById('op-top'), document.getElementById('op-left')]; }
+function clearSeatFx(){ seatEls().forEach(el=>{ if(el) el.classList.remove('active-glow','seat-win'); }); }
+function applySeatFx(v, youSeat){
+  clearSeatFx();
+  const els=seatEls();
+  const vis = (youSeat>=0)
+    ? (srv)=>{ if(srv===youSeat) return 0; if(srv===(youSeat+1)%4) return 1; if(srv===(youSeat+2)%4) return 2; if(srv===(youSeat+3)%4) return 3; return -1; }
+    : (srv)=>({0:1,1:2,2:3,3:0}[srv]);
+  if(v.turn!=null){ const i=vis(v.turn); if(i>=0 && els[i]) els[i].classList.add('active-glow'); }
+  if(v.winner){ const wseats = (v.winner.winnerSeat!=null) ? [v.winner.winnerSeat] : (Array.isArray(v.winner.winners)?v.winner.winners:[]); wseats.forEach(s=>{ const i=vis(s); if(i>=0 && els[i]) els[i].classList.add('seat-win'); }); }
+}
+function centerDiscard(v){
+  const c=document.getElementById('center');
+  const key = v.lastDiscard ? (v.lastDiscard.seat+'_'+v.lastDiscard.tile) : '';
+  c.innerHTML='';
+  if(v.lastDiscard){ const t=v.lastDiscard.tile; c.innerHTML=tileHTML(t,'hand')+'<div style="font-size:11px;opacity:.8;margin-top:4px">'+v.players[v.lastDiscard.seat].name+' 打出</div>'; }
+  if(key && key!==prevDiscardKey){
+    const tileEl=c.querySelector('.tile'); if(tileEl) tileEl.classList.add('drop');
+    c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+  }
+  prevDiscardKey=key;
+}
 function tileHTML(t, cls){ return '<div class="tile '+cls+' '+tileClass(t)+' '+tileExtraClass(t)+'">'+tileLabel(t)+'</div>'; }
 function backHTML(cls){ return '<div class="tile-back '+cls+'"></div>'; }
 function meldHTML(m){ let s='<div class="meld">'; for(const t of m.tiles) s+=tileHTML(t,'mini'); return s+'</div>'; }
@@ -204,15 +237,16 @@ function renderSpectator(v){
     h+='<div class="hand-row" id="myHand">'; for(const t of (bottom.hand||[])) h+='<div class="tile hand '+tileClass(t)+' '+tileExtraClass(t)+'">'+tileLabel(t)+'</div>'; h+='</div>';
   }
   document.getElementById('human').innerHTML=h;
-  let c=document.getElementById('center'); c.innerHTML='';
-  if(v.lastDiscard){ const t=v.lastDiscard.tile; c.innerHTML=tileHTML(t,'hand')+'<div style="font-size:11px;opacity:.8;margin-top:4px">'+(P[v.lastDiscard.seat]?P[v.lastDiscard.seat].name:'')+' 打出</div>'; }
+  centerDiscard(v);
   renderActions(v);
+  applySeatFx(v, v.youSeat);
   if(v.winner) showResult(v); else document.getElementById('overlay').style.display='none';
 }
 
 let turnSeat=-1;
 let curScores=[0,0,0,0];
 let resultProcessed=false;
+let prevDiscardKey='';
 function renderState(v){
   if(!v.winner) resultProcessed=false;
   mySeat=v.youSeat; turnSeat=v.turn; curScores=v.scores||[0,0,0,0];
@@ -237,11 +271,11 @@ function renderState(v){
   document.getElementById('human').innerHTML=h;
   if(canDiscard){ document.querySelectorAll('#myHand .tile').forEach(el=>{ el.style.cursor='pointer'; el.onclick=()=>{ unlockVoice(); send({type:'discard', tile:el.getAttribute('data-t')}); }; }); }
 
-  // 中央：最近打出
-  let c=document.getElementById('center'); c.innerHTML='';
-  if(v.lastDiscard){ const t=v.lastDiscard.tile; c.innerHTML=tileHTML(t,'hand')+'<div style="font-size:11px;opacity:.8;margin-top:4px">'+P[v.lastDiscard.seat].name+' 打出</div>'; }
+  // 中央：最近打出（落子动画）
+  centerDiscard(v);
 
   renderActions(v);
+  applySeatFx(v, v.youSeat);
   if(v.winner) showResult(v); else document.getElementById('overlay').style.display='none';
 }
 
