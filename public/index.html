@@ -57,6 +57,11 @@
     <div class="card">
       <div style="font-size:14px;opacity:.9">输入昵称后开始</div>
       <input id="nameInput" placeholder="你的昵称" maxlength="8" value="玩家">
+      <select id="modeSelect" style="width:100%;padding:8px;border-radius:8px;border:none;font-size:15px;margin:6px 0">
+        <option value="gb">国标简化版（万条筒+字牌，吃碰杠胡）</option>
+        <option value="gd">广东麻将（万条筒+字牌，吃碰杠胡）</option>
+        <option value="sc">四川血战到底（万条筒，定缺/禁吃/续打）</option>
+      </select>
       <button onclick="quickStart()">⚡ 快速开始（人机各半，缺人补机器人）</button>
       <button onclick="createRoom()">创建房间（等人加入）</button>
       <div style="display:flex;gap:6px;margin-top:6px">
@@ -67,6 +72,7 @@
     </div>
     <div class="card hidden" id="roomCard">
       <div>房间号：<span class="code" id="roomCode"></span> <button style="width:auto;padding:4px 8px;font-size:12px" onclick="copyCode()">复制</button></div>
+      <div style="font-size:13px;opacity:.85;margin-top:2px">玩法：<b id="roomMode" style="color:#ffce54">国标简化版</b></div>
       <div id="seatList"></div>
       <button id="startBtn" class="hidden" onclick="startGame()">开始游戏</button>
       <div style="font-size:12px;opacity:.8;margin-top:6px">把房间号发给好友，对方选「加入」即可同场对战；空位会自动补机器人。</div>
@@ -106,8 +112,9 @@ function connect(cb){
 }
 function send(m){ if(ws && ws.readyState===1) ws.send(JSON.stringify(m)); }
 
-function quickStart(){ connect(()=>{ send({type:'quickstart', name:nameVal(), score:getStoredScore(nameVal())}); }); }
-function createRoom(){ connect(()=>{ send({type:'create', name:nameVal(), score:getStoredScore(nameVal())}); }); }
+function modeVal(){ const el=document.getElementById('modeSelect'); return (el&&el.value)||'gb'; }
+function quickStart(){ connect(()=>{ send({type:'quickstart', name:nameVal(), score:getStoredScore(nameVal()), mode:modeVal()}); }); }
+function createRoom(){ connect(()=>{ send({type:'create', name:nameVal(), score:getStoredScore(nameVal()), mode:modeVal()}); }); }
 function joinRoom(){ const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'join', name:nameVal(), code:c, score:getStoredScore(nameVal())}); }); }
 function spectateRoom(){ const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'spectate', name:nameVal(), code:c}); }); }
 function startGame(){ send({type:'start'}); }
@@ -130,6 +137,7 @@ function renderLobby(m){
   document.getElementById('lobby').classList.remove('hidden'); document.getElementById('game').classList.add('hidden');
   document.getElementById('roomCard').classList.remove('hidden');
   document.getElementById('roomCode').textContent=m.code;
+  document.getElementById('roomMode').textContent=({gb:'国标简化版',gd:'广东麻将',sc:'四川血战到底'}[m.mode||'gb']||'国标简化版');
   let html='';
   for(let s=0;s<4;s++){ const p=m.players[s]; const empty=!p||!p.name;
     html+='<div class="seat '+(empty?'empty':'')+'"><span>'+(empty?'空位（补机器人）':(p.name+(p.isBot?' 🤖':'')))+'</span>'+(s===m.host?'<span>房主</span>':'')+'</div>';
@@ -162,7 +170,8 @@ function seatHTMLFull(p){
 function renderSpectator(v){
   showGame();
   const P=v.players;
-  document.getElementById('wallinfo').textContent='👁 观战中 · 牌墙:'+v.wallCount;
+  const MODE=({gb:'国标',gd:'广东',sc:'血战'}[v.mode||'gb']||'国标');
+  document.getElementById('wallinfo').textContent='👁 观战中 · '+MODE+' · 牌墙:'+v.wallCount;
   const top=P[1], right=P[0], left=P[2], bottom=P[3];
   document.getElementById('op-top').innerHTML=seatHTMLFull(top);
   document.getElementById('op-right').innerHTML=seatHTMLFull(right);
@@ -189,7 +198,8 @@ function renderState(v){
   mySeat=v.youSeat; turnSeat=v.turn; curScores=v.scores||[0,0,0,0];
   showGame();
   if(mySeat<0){ renderSpectator(v); return; }
-  document.getElementById('wallinfo').textContent='牌墙: '+v.wallCount;
+  const MODE=({gb:'国标',gd:'广东',sc:'血战'}[v.mode||'gb']||'国标');
+  document.getElementById('wallinfo').textContent=MODE+' · 牌墙: '+v.wallCount;
   const P=v.players;
   const bottom=P[v.youSeat], right=P[(v.youSeat+1)%4], top=P[(v.youSeat+2)%4], left=P[(v.youSeat+3)%4];
   document.getElementById('op-top').innerHTML=seatHTML(top,false);

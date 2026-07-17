@@ -62,7 +62,7 @@ function chowCombos(hand, tile){
 function removeOne(arr, t){ let i=arr.indexOf(t); if(i>=0) arr.splice(i,1); }
 function removeFromHand(g, seat, tile){ let h=g.players[seat].hand; let i=h.indexOf(tile); if(i>=0) h.splice(i,1); }
 function sortHand(g, seat){ g.players[seat].hand.sort((a,b)=>ti(a)-ti(b)); }
-function buildWall(){ let w=[]; for(const s of ['m','s','p']) for(let r=1;r<=9;r++) for(let k=0;k<4;k++) w.push(s+r); for(let r=1;r<=7;r++) for(let k=0;k<4;k++) w.push('z'+r); return w; }
+function buildWall(mode){ let w=[]; for(const s of ['m','s','p']) for(let r=1;r<=9;r++) for(let k=0;k<4;k++) w.push(s+r); if(mode!=='sc'){ for(let r=1;r<=7;r++) for(let k=0;k<4;k++) w.push('z'+r); } return w; }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ let j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
 function isAllPung(c){ let pairs=0; for(let i=0;i<34;i++){ if(c[i]!==0 && c[i]!==2 && c[i]!==3) return false; if(c[i]===2) pairs++; } return pairs===1; }
@@ -71,8 +71,9 @@ function winInfo(g, seat, tile, selfDraw){
   let c=toCounts(all), melds=pl.melds, labels=[];
   if(selfDraw) labels.push('自摸');
   if(melds.length===0){ let pairs=0, ok=true; for(let i=0;i<34;i++){ if(c[i]%2!==0){ok=false;break;} if(c[i]===2) pairs++; } if(ok && pairs===7) labels.push('七对'); }
-  if(!melds.some(m=>m.type==='chow') && isAllPung(c)) labels.push('碰碰胡');
+  if(!melds.some(m=>m.type==='chow') && isAllPung(c)) labels.push((g.mode==='gd')?'对对胡':'碰碰胡');
   let suits=new Set(all.map(t=>t[0])); if(suits.size===1) labels.push('清一色');
+  if((g.mode==='gd') && suits.has('z') && suits.size<=2) labels.push('混一色');
   if(labels.length===0) labels.push('平胡');
   return labels.join(' ');
 }
@@ -84,6 +85,7 @@ function computeFan(g, seat, tile, selfDraw){
   if(melds.length===0){ let pairs=0, ok=true; for(let i=0;i<34;i++){ if(c[i]%2!==0){ok=false;break;} if(c[i]===2) pairs++; } if(ok && pairs===7) fan+=2; }
   if(!melds.some(m=>m.type==='chow') && isAllPung(c)) fan+=2;
   let suits=new Set(all.map(t=>t[0])); if(suits.size===1) fan+=4;
+  if((g.mode==='gd') && suits.has('z') && suits.size<=2) fan+=3;
   return fan;
 }
 
@@ -92,7 +94,8 @@ const rooms = {};
 function genCode(){ const cs='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<4;i++) s+=cs[Math.floor(Math.random()*cs.length)]; return s; }
 
 function newGame(room){
-  const g={ wall: shuffle(buildWall()), players: room.players, turn:0, drawnTile:null, lastDiscard:null, phase:'play', winner:null };
+  const mode=room.mode||'gb';
+  const g={ mode, wall: shuffle(buildWall(mode)), players: room.players, turn:0, drawnTile:null, lastDiscard:null, phase:'play', winner:null };
   room.game=g; room.awaiting=null; room.pendingClaims=null; room.awaitTimer=null;
   for(let s=0;s<4;s++){ let p=g.players[s]; p.hand=[]; p.melds=[]; p.discards=[]; }
   for(let i=0;i<13;i++) for(let s=0;s<4;s++) g.players[s].hand.push(g.wall.pop());
@@ -167,7 +170,7 @@ function claimOptionsFor(g, seat, tile, fromSeat){
     let multi=Object.values(c).filter(v=>v>=2).length>=2;
     if(isJunk||multi) opts.push({action:'pung'});
   }
-  if((seat+3)%4===fromSeat && idx<27){
+  if((seat+3)%4===fromSeat && idx<27 && g.mode!=='sc'){
     for(const combo of chowCombos(hand,tile)){
       let h2=hand.slice(); removeOne(h2,combo[0]); removeOne(h2,combo[1]);
       if(handValue(toCounts(h2)) >= bestDiscardValue(hand)-2) opts.push({action:'chow', tiles:combo});
@@ -292,7 +295,7 @@ function buildView(room, seat){
   } else if(room.pendingClaims && room.pendingClaims.humanSeats.includes(seat)){
     yourActions={type:'claim', options: room.pendingClaims.optionsBySeat[seat], tile: room.pendingClaims.tile};
   }
-  return { type:'state', youSeat:seat, turn:g.turn, wallCount:g.wall.length, phase:g.phase,
+  return { type:'state', youSeat:seat, turn:g.turn, wallCount:g.wall.length, phase:g.phase, mode:g.mode,
     scores: room.scores || [0,0,0,0],
     lastDiscard:g.lastDiscard, players, yourActions,
     winner: g.winner ? {
@@ -317,10 +320,10 @@ function buildSpectatorView(room){
       info: g.winner.draw?[]:g.winner.winners.map(w=>({seat:w, name:g.players[w].name, fan:winInfo(g,w,g.winner.tile,g.winner.selfDraw), fanNum:computeFan(g,w,g.winner.tile,g.winner.selfDraw), delta:g.winner.deltas[w], hand:g.players[w].hand.concat([g.winner.tile]) })) };
   }
   return { type:'state', youSeat:-1, turn: g?g.turn:-1, wallCount: g?g.wall.length:0, phase: g?g.phase:'lobby',
-    scores: room.scores||[0,0,0,0], lastDiscard: g?g.lastDiscard:null, players, yourActions:null, winner };
+    mode: g?g.mode:'gb', scores: room.scores||[0,0,0,0], lastDiscard: g?g.lastDiscard:null, players, yourActions:null, winner };
 }
 function buildLobby(room){
-  return { type:'lobby', code:room.code, host:room.host, started: !!(room.game && room.game.phase!=='over'),
+  return { type:'lobby', code:room.code, host:room.host, mode:room.mode||'gb', started: !!(room.game && room.game.phase!=='over'),
     players: room.players.map((p,s)=>({seat:s, name:p?p.name:null, isBot:p?p.isBot:false, connected:p?p.connected:false})) };
 }
 function send(ws, obj){ if(ws && ws.readyState===1) ws.send(JSON.stringify(obj)); }
@@ -353,7 +356,7 @@ wss.on('connection', (ws)=>{
 function handleMsg(ws, m){
   if(m.type==='quickstart'){
     let code=genCode(); while(rooms[code]) code=genCode();
-    let room={ code, host:0, players:[null,null,null,null], scores:[0,0,0,0], spectators:[] };
+    let room={ code, host:0, mode:(m.mode||'gb'), players:[null,null,null,null], scores:[0,0,0,0], spectators:[] };
     rooms[code]=room;
     room.players[0]={ ws, name:(m.name||'玩家')+'', isBot:false, connected:true, seat:0 };
     room.scores[0]=m.score||0;
@@ -364,7 +367,7 @@ function handleMsg(ws, m){
   }
   if(m.type==='create'){
     let code=genCode(); while(rooms[code]) code=genCode();
-    let room={ code, host:0, players:[null,null,null,null], scores:[0,0,0,0], spectators:[] };
+    let room={ code, host:0, mode:(m.mode||'gb'), players:[null,null,null,null], scores:[0,0,0,0], spectators:[] };
     rooms[code]=room;
     room.players[0]={ ws, name:(m.name||'玩家')+'', isBot:false, connected:true, seat:0 };
     room.scores[0]=m.score||0;
@@ -382,7 +385,7 @@ function handleMsg(ws, m){
     room.players[seat]={ ws, name:(m.name||'玩家')+'', isBot:false, connected:true, seat };
     room.scores[seat]=m.score||0;
     ws.roomCode=room.code; ws.seat=seat;
-    send(ws,{type:'joined', code:room.code, seat});
+    send(ws,{type:'joined', code:room.code, seat, mode:room.mode});
     broadcastLobby(room);
     return;
   }
