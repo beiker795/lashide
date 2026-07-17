@@ -26,7 +26,10 @@
   .seat .sc { font-size:12px; color:#ffd54a; margin-left:4px; }
   .seat .role { font-size:11px; color:#ffd54a; }
   .seat .played { display:flex; gap:2px; flex-wrap:wrap; min-height:30px; align-items:center; }
-  .seat.landlord { outline:2px solid #ffd54a; }
+  .seat.landlord { outline:2px solid #ffd54a; animation: lordGlow 2s ease-in-out infinite; }
+  .seat .crown { font-size:16px; filter:drop-shadow(0 0 4px #ffd54a); animation: crownPulse 1.6s ease-in-out infinite; }
+  @keyframes lordGlow { 0%,100%{ box-shadow:0 0 6px 1px rgba(255,213,74,.45); } 50%{ box-shadow:0 0 16px 4px rgba(255,213,74,.85); } }
+  @keyframes crownPulse { 0%,100%{ transform:translateY(0) scale(1); filter:drop-shadow(0 0 3px #ffd54a); } 50%{ transform:translateY(-2px) scale(1.18); filter:drop-shadow(0 0 9px #ffe082); } }
   .seat .turn { width:8px; height:8px; border-radius:50%; background:#ffd54a; display:inline-block; margin-left:4px; }
   #seatSelf { left:50%; bottom:10px; transform:translateX(-50%); width:172px; }
   #seatLeft { left:10px; top:50%; transform:translateY(-50%); }
@@ -37,8 +40,12 @@
   .chips { position:absolute; left:50%; top:62%; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; pointer-events:none; }
   .chipstack { position:relative; width:48px; }
   .chip { position:absolute; left:50%; transform:translateX(-50%); width:46px; height:15px; border-radius:50%; border:2px solid #fff; box-shadow: inset 0 -2px 3px rgba(0,0,0,.28), 0 1px 2px rgba(0,0,0,.4); }
+  .chip.enter { animation: chipDrop .42s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes chipDrop { 0%{ transform:translate(-50%,-28px) scale(.55); opacity:0; } 60%{ opacity:1; } 100%{ transform:translate(-50%,0) scale(1); } }
   .chip::after { content:''; position:absolute; left:6px; right:6px; top:50%; height:3px; transform:translateY(-50%); border-radius:2px; background:rgba(255,255,255,.55); }
   .chipLabel { margin-top:6px; background:rgba(0,0,0,.55); color:#ffd54a; font-size:12px; padding:2px 9px; border-radius:10px; white-space:nowrap; }
+  .chips.flash { animation: potFlash .5s ease; }
+  @keyframes potFlash { 0%{ transform:translate(-50%,-50%) scale(1); } 30%{ transform:translate(-50%,-50%) scale(1.18); filter:drop-shadow(0 0 12px #ffd54a); } 100%{ transform:translate(-50%,-50%) scale(1); filter:none; } }
   /* 牌 */
   .card { width:30px; height:42px; background:#fff; color:#222; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.3); user-select:none; }
   .card.red { color:#d33; }
@@ -83,15 +90,15 @@
   </div>
   <div class="table">
     <div class="seat" id="seatTop">
-      <div class="head"><span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span><span class="sc"></span></div>
+      <div class="head"><span><span class="crown" style="display:none">👑</span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span><span class="sc"></span></div>
       <div class="played"></div>
     </div>
     <div class="seat" id="seatLeft">
-      <div class="head"><span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span><span class="sc"></span></div>
+      <div class="head"><span><span class="crown" style="display:none">👑</span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span><span class="sc"></span></div>
       <div class="played"></div>
     </div>
     <div class="seat" id="seatSelf">
-      <div class="head"><span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span><span class="sc"></span></div>
+      <div class="head"><span><span class="crown" style="display:none">👑</span><span class="name"></span><span class="role"></span><span class="turn"></span></span><span class="cnt"></span><span class="sc"></span></div>
       <div class="played"></div>
     </div>
     <div class="center-area"><div class="lastplay" id="lastPlay"></div></div>
@@ -105,6 +112,7 @@
 
 <script>
 let ws=null, mySeat=-1, myCode='', curState=null;
+let prevMult=1, prevChipCount=1, prevPhase='';
 let voiceOn=true, _voiceReady=false;
 const VOICE_FILES={}; // 升级真人录音：把 mp3 放进 public/voices/ 后填 {zhadan:'voices/zhadan.mp3',wangzha:'voices/wangzha.mp3'}
 function unlockVoice(){ if(_voiceReady) return; try{ const u=new SpeechSynthesisUtterance(''); u.volume=0; speechSynthesis.speak(u); speechSynthesis.cancel(); _voiceReady=true; }catch(e){} }
@@ -191,6 +199,7 @@ function renderState(m){
     const scEl=el.querySelector('.sc'); if(scEl) scEl.textContent = '分 '+(g.scores?g.scores[s]:0);
     el.querySelector('.turn').innerHTML = (g.turn===s && g.phase!=='over')?'<span class="turndot"></span>':'';
     el.classList.toggle('landlord', !!p.isLandlord);
+    const crown=el.querySelector('.crown'); if(crown) crown.style.display = p.isLandlord ? 'inline' : 'none';
     // 出牌区：显示该玩家最近一手
     const played=el.querySelector('.played');
     if(played){
@@ -204,12 +213,14 @@ function renderState(m){
     if(g.lastPlay){ lp.innerHTML = g.lastPlay.cards.map(c=>cardHTML(c,false)).join(''); }
     else lp.innerHTML='';
   }
-  // 筹码堆：随倍数增长（炸弹/王炸/春天翻倍时变高）
+  // 筹码堆：随倍数增长（炸弹/王炸/春天翻倍时变高），并播放落入/闪光动画
   const stack=document.getElementById('chipStack');
   const label=document.getElementById('chipLabel');
   const mult = g.multiplier||1;
   const n = Math.min(mult, 12);
   const chipColors=['#e53935','#1e88e5','#ffffff','#fb8c00'];
+  const enteringPhase = (prevPhase!=='playing' && g.phase==='playing');
+  const startEnter = (mult>prevMult) ? prevChipCount : (enteringPhase ? 0 : prevChipCount);
   stack.innerHTML='';
   for(let i=0;i<n;i++){
     const c=document.createElement('div');
@@ -217,10 +228,19 @@ function renderState(m){
     c.style.bottom=(i*5)+'px';
     c.style.background=chipColors[i%chipColors.length];
     c.style.zIndex=String(i);
+    if(i>=startEnter){
+      c.classList.add('enter');
+      c.style.animationDelay=((i-startEnter)*45)+'ms';
+    }
     stack.appendChild(c);
   }
   stack.style.height=(n*5+16)+'px';
   label.textContent='注 ×'+mult;
+  if(mult>prevMult){
+    const chipsEl=document.querySelector('.chips');
+    if(chipsEl){ chipsEl.classList.remove('flash'); void chipsEl.offsetWidth; chipsEl.classList.add('flash'); }
+  }
+  prevMult=mult; prevChipCount=n; prevPhase=g.phase;
   // 自己的手牌
   const hh=document.getElementById('myHand');
   hh.innerHTML='';
