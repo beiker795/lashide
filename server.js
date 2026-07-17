@@ -171,6 +171,7 @@ function doAnKong(room, seat, tile){
   const g=room.game, pl=g.players[seat];
   for(let k=0;k<4;k++) removeFromHand(g,seat,tile);
   pl.melds.push({type:'kong', tiles:[tile,tile,tile,tile], from:seat, an:true});
+  announce(room,{action:'kong',seat,name:pl.name,tile,an:true});
   if(g.wall.length){ let d=g.wall.pop(); pl.hand.push(d); g.drawnTile=d; sortHand(g,seat); }
   g.turn=seat; afterKong(room,seat);
 }
@@ -178,6 +179,7 @@ function doBuKong(room, seat, tile){
   const g=room.game, pl=g.players[seat];
   for(const m of pl.melds){ if(m.type==='pung'&&ti(m.tiles[0])===ti(tile)){ m.type='kong'; m.tiles.push(tile); m.from=seat; break; } }
   removeFromHand(g,seat,tile);
+  announce(room,{action:'kong',seat,name:pl.name,tile});
   if(g.wall.length){ let d=g.wall.pop(); pl.hand.push(d); g.drawnTile=d; sortHand(g,seat); }
   g.turn=seat; afterKong(room,seat);
 }
@@ -274,14 +276,17 @@ function executeClaim(room, claim, tile, fromSeat){
   if(claim.action==='chow'){
     for(const t of claim.tiles) removeFromHand(g,seat,t);
     pl.melds.push({type:'chow', tiles:[claim.tiles[0], claim.tiles[1], tile], from:fromSeat});
+    announce(room,{action:'chow',seat,name:pl.name,tile});
     g.turn=seat; enterDiscardPhase(room,seat);
   } else if(claim.action==='pung'){
     removeFromHand(g,seat,tile); removeFromHand(g,seat,tile);
     pl.melds.push({type:'pung', tiles:[tile,tile,tile], from:fromSeat});
+    announce(room,{action:'pung',seat,name:pl.name,tile});
     g.turn=seat; enterDiscardPhase(room,seat);
   } else if(claim.action==='kong'){
     removeFromHand(g,seat,tile); removeFromHand(g,seat,tile); removeFromHand(g,seat,tile);
     pl.melds.push({type:'kong', tiles:[tile,tile,tile,tile], from:fromSeat});
+    announce(room,{action:'kong',seat,name:pl.name,tile});
     g.turn=seat;
     if(g.wall.length){ let d=g.wall.pop(); pl.hand.push(d); g.drawnTile=d; sortHand(g,seat); }
     afterKong(room,seat);
@@ -289,6 +294,7 @@ function executeClaim(room, claim, tile, fromSeat){
 }
 function endRound(room, winners, tile, selfDraw){
   const g=room.game;
+  for(const w of winners){ announce(room,{action: selfDraw?'zimo':'hu', seat:w, name:g.players[w].name, tile}); }
   if(g.mode==='sc'){ endRoundSc(room, winners, tile, selfDraw); return; }
   g.phase='over'; g.winner={winners, tile, selfDraw}; room.awaiting=null; room.pendingClaims=null;
   if(room.awaitTimer) clearTimeout(room.awaitTimer);
@@ -433,6 +439,8 @@ function buildLobby(room){
     players: room.players.map((p,s)=>({seat:s, name:p?p.name:null, isBot:p?p.isBot:false, connected:p?p.connected:false})) };
 }
 function send(ws, obj){ if(ws && ws.readyState===1) ws.send(JSON.stringify(obj)); }
+// 向房间内所有人（含观战）广播一个独立的动作事件，供客户端播放语音
+function announce(room, payload){ const msg=JSON.stringify({type:'action', ...payload}); for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) p.ws.send(msg); } for(const sp of (room.spectators||[])) if(sp.ws) sp.ws.send(msg); }
 function broadcast(room){ for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) send(p.ws, buildView(room,s)); } for(const sp of (room.spectators||[])) send(sp.ws, buildSpectatorView(room)); }
 function broadcastLobby(room){ for(let s=0;s<4;s++){ let p=room.players[s]; if(p && p.ws && p.connected) send(p.ws, buildLobby(room)); } for(const sp of (room.spectators||[])) send(sp.ws, buildSpectatorView(room)); }
 

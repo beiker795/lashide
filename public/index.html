@@ -50,7 +50,7 @@
 </head>
 <body>
 <div id="app">
-  <div class="topbar"><span id="wallinfo">联机麻将</span><span><button onclick="backLobby()">大厅</button></span></div>
+  <div class="topbar"><span id="wallinfo">联机麻将</span><span><button id="voiceBtn" onclick="toggleVoice()" title="语音开关">🔊</button><button onclick="backLobby()">大厅</button></span></div>
   <div id="msg">未连接</div>
 
   <div id="lobby">
@@ -113,10 +113,10 @@ function connect(cb){
 function send(m){ if(ws && ws.readyState===1) ws.send(JSON.stringify(m)); }
 
 function modeVal(){ const el=document.getElementById('modeSelect'); return (el&&el.value)||'gb'; }
-function quickStart(){ connect(()=>{ send({type:'quickstart', name:nameVal(), score:getStoredScore(nameVal()), mode:modeVal()}); }); }
-function createRoom(){ connect(()=>{ send({type:'create', name:nameVal(), score:getStoredScore(nameVal()), mode:modeVal()}); }); }
-function joinRoom(){ const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'join', name:nameVal(), code:c, score:getStoredScore(nameVal())}); }); }
-function spectateRoom(){ const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'spectate', name:nameVal(), code:c}); }); }
+function quickStart(){ unlockVoice(); connect(()=>{ send({type:'quickstart', name:nameVal(), score:getStoredScore(nameVal()), mode:modeVal()}); }); }
+function createRoom(){ unlockVoice(); connect(()=>{ send({type:'create', name:nameVal(), score:getStoredScore(nameVal()), mode:modeVal()}); }); }
+function joinRoom(){ unlockVoice(); const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'join', name:nameVal(), code:c, score:getStoredScore(nameVal())}); }); }
+function spectateRoom(){ unlockVoice(); const c=(document.getElementById('codeInput').value||'').toUpperCase().trim(); if(!c){ alert('请输入房间号'); return; } connect(()=>{ send({type:'spectate', name:nameVal(), code:c}); }); }
 function startGame(){ send({type:'start'}); }
 function nameVal(){ return (document.getElementById('nameInput').value||'玩家').trim()||'玩家'; }
 function copyCode(){ if(!myCode) return; navigator.clipboard && navigator.clipboard.writeText(myCode); setMsg('房间号已复制：'+myCode); }
@@ -127,8 +127,28 @@ function onMessage(m){
   if(m.type==='joined'){ mySeat=m.seat; myCode=m.code; showGame(); document.getElementById('roomCode').textContent=m.code; }
   else if(m.type==='error'){ alert(m.msg); }
   else if(m.type==='lobby'){ renderLobby(m); }
+  else if(m.type==='action'){ playActionVoice(m); }
   else if(m.type==='state'){ renderState(m); }
 }
+
+// ===================== 语音（吃碰杠胡） =====================
+let voiceOn=true;
+const VOICE_FILES={}; // 升级真人录音：把 mp3 放进 public/voices/ 后填 {chow:'voices/chi.mp3',pung:'voices/peng.mp3',kong:'voices/gang.mp3',hu:'voices/hu.mp3',zimo:'voices/zimo.mp3'}，将自动优先于 TTS
+let _voiceReady=false;
+function unlockVoice(){ if(_voiceReady) return; try{ const u=new SpeechSynthesisUtterance(''); u.volume=0; speechSynthesis.speak(u); speechSynthesis.cancel(); _voiceReady=true; }catch(e){} }
+function sayWord(text, key){
+  if(!voiceOn) return; unlockVoice();
+  try{
+    if(VOICE_FILES[key]){ const a=new Audio(VOICE_FILES[key]); a.play().catch(()=>{}); return; }
+    const u=new SpeechSynthesisUtterance(text); u.lang='zh-CN'; u.rate=1.15; u.pitch=1;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }catch(e){}
+}
+function playActionVoice(m){
+  const map={chow:['吃','chi'],pung:['碰','peng'],kong:['杠','gang'],hu:['胡','hu'],zimo:['自摸','zimo']};
+  const it=map[m.action]; if(it) sayWord(it[0], it[1]);
+}
+function toggleVoice(){ voiceOn=!voiceOn; const b=document.getElementById('voiceBtn'); if(b) b.textContent=voiceOn?'🔊':'🔇'; if(!voiceOn){ try{ speechSynthesis.cancel(); }catch(e){} } }
 
 // ===================== 大厅渲染 =====================
 function showGame(){ document.getElementById('lobby').classList.add('hidden'); document.getElementById('game').classList.remove('hidden'); }
@@ -215,7 +235,7 @@ function renderState(v){
   for(const t of bottom.hand){ h+='<div class="tile hand '+tileClass(t)+' '+tileExtraClass(t)+'"'+(canDiscard?' data-t="'+t+'"':'')+'>'+tileLabel(t)+'</div>'; }
   h+='</div>';
   document.getElementById('human').innerHTML=h;
-  if(canDiscard){ document.querySelectorAll('#myHand .tile').forEach(el=>{ el.style.cursor='pointer'; el.onclick=()=>send({type:'discard', tile:el.getAttribute('data-t')}); }); }
+  if(canDiscard){ document.querySelectorAll('#myHand .tile').forEach(el=>{ el.style.cursor='pointer'; el.onclick=()=>{ unlockVoice(); send({type:'discard', tile:el.getAttribute('data-t')}); }; }); }
 
   // 中央：最近打出
   let c=document.getElementById('center'); c.innerHTML='';
