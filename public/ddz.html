@@ -31,8 +31,14 @@
   #seatSelf { left:50%; bottom:10px; transform:translateX(-50%); width:172px; }
   #seatLeft { left:10px; top:50%; transform:translateY(-50%); }
   #seatTop  { right:10px; top:50%; transform:translateY(-50%); }
-  .center-area { position:absolute; left:50%; top:44%; transform:translate(-50%,-50%); }
+  .center-area { position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); }
   .lastplay { display:flex; gap:2px; }
+  /* 筹码堆（反映倍数） */
+  .chips { position:absolute; left:50%; top:62%; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; pointer-events:none; }
+  .chipstack { position:relative; width:48px; }
+  .chip { position:absolute; left:50%; transform:translateX(-50%); width:46px; height:15px; border-radius:50%; border:2px solid #fff; box-shadow: inset 0 -2px 3px rgba(0,0,0,.28), 0 1px 2px rgba(0,0,0,.4); }
+  .chip::after { content:''; position:absolute; left:6px; right:6px; top:50%; height:3px; transform:translateY(-50%); border-radius:2px; background:rgba(255,255,255,.55); }
+  .chipLabel { margin-top:6px; background:rgba(0,0,0,.55); color:#ffd54a; font-size:12px; padding:2px 9px; border-radius:10px; white-space:nowrap; }
   /* 牌 */
   .card { width:30px; height:42px; background:#fff; color:#222; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.3); user-select:none; }
   .card.red { color:#d33; }
@@ -89,6 +95,7 @@
       <div class="played"></div>
     </div>
     <div class="center-area"><div class="lastplay" id="lastPlay"></div></div>
+    <div class="chips"><div class="chipstack" id="chipStack"></div><div class="chipLabel" id="chipLabel">×1</div></div>
   </div>
   <div id="myHand"></div>
   <div id="actions"></div>
@@ -197,6 +204,23 @@ function renderState(m){
     if(g.lastPlay){ lp.innerHTML = g.lastPlay.cards.map(c=>cardHTML(c,false)).join(''); }
     else lp.innerHTML='';
   }
+  // 筹码堆：随倍数增长（炸弹/王炸/春天翻倍时变高）
+  const stack=document.getElementById('chipStack');
+  const label=document.getElementById('chipLabel');
+  const mult = g.multiplier||1;
+  const n = Math.min(mult, 12);
+  const chipColors=['#e53935','#1e88e5','#ffffff','#fb8c00'];
+  stack.innerHTML='';
+  for(let i=0;i<n;i++){
+    const c=document.createElement('div');
+    c.className='chip';
+    c.style.bottom=(i*5)+'px';
+    c.style.background=chipColors[i%chipColors.length];
+    c.style.zIndex=String(i);
+    stack.appendChild(c);
+  }
+  stack.style.height=(n*5+16)+'px';
+  label.textContent='注 ×'+mult;
   // 自己的手牌
   const hh=document.getElementById('myHand');
   hh.innerHTML='';
