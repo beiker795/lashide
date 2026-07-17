@@ -76,6 +76,16 @@ function winInfo(g, seat, tile, selfDraw){
   if(labels.length===0) labels.push('平胡');
   return labels.join(' ');
 }
+// 数值番数（用于积分）
+function computeFan(g, seat, tile, selfDraw){
+  let pl=g.players[seat]; let all=pl.hand.slice(); all.push(tile);
+  let c=toCounts(all), melds=pl.melds; let fan=1;
+  if(selfDraw) fan+=1;
+  if(melds.length===0){ let pairs=0, ok=true; for(let i=0;i<34;i++){ if(c[i]%2!==0){ok=false;break;} if(c[i]===2) pairs++; } if(ok && pairs===7) fan+=2; }
+  if(!melds.some(m=>m.type==='chow') && isAllPung(c)) fan+=2;
+  let suits=new Set(all.map(t=>t[0])); if(suits.size===1) fan+=4;
+  return fan;
+}
 
 // ----------------- 房间与对局流程 -----------------
 const rooms = {};
@@ -238,6 +248,23 @@ function executeClaim(room, claim, tile, fromSeat){
 function endRound(room, winners, tile, selfDraw){
   const g=room.game; g.phase='over'; g.winner={winners, tile, selfDraw}; room.awaiting=null; room.pendingClaims=null;
   if(room.awaitTimer) clearTimeout(room.awaitTimer);
+  if(!room.scores) room.scores=[0,0,0,0];
+  let deltas=[0,0,0,0];
+  if(selfDraw){
+    let F=computeFan(g, winners[0], tile, true);
+    deltas[winners[0]] += 3*F;
+    for(let p=0;p<4;p++) if(p!==winners[0]) deltas[p] -= F;
+  } else {
+    let discarder = g.lastDiscard ? g.lastDiscard.seat : -1;
+    for(const w of winners){
+      let F=computeFan(g, w, tile, false);
+      deltas[w] += F;
+      if(discarder>=0) deltas[discarder] -= F;
+    }
+  }
+  for(let p=0;p<4;p++) room.scores[p] += deltas[p];
+  g.winner.scores=room.scores.slice();
+  g.winner.deltas=deltas;
   broadcast(room);
 }
 function endRoundDraw(room){
@@ -266,10 +293,12 @@ function buildView(room, seat){
     yourActions={type:'claim', options: room.pendingClaims.optionsBySeat[seat], tile: room.pendingClaims.tile};
   }
   return { type:'state', youSeat:seat, turn:g.turn, wallCount:g.wall.length, phase:g.phase,
+    scores: room.scores || [0,0,0,0],
     lastDiscard:g.lastDiscard, players, yourActions,
     winner: g.winner ? {
       draw: !!g.winner.draw, winners:g.winner.winners, tile:g.winner.tile, selfDraw:g.winner.selfDraw,
-      info: g.winner.draw ? [] : g.winner.winners.map(w=>({seat:w, name:g.players[w].name, fan:winInfo(g,w,g.winner.tile,g.winner.selfDraw), hand:g.players[w].hand.concat([g.winner.tile]) }))
+      scores: g.winner.scores, deltas: g.winner.deltas,
+      info: g.winner.draw ? [] : g.winner.winners.map(w=>({seat:w, name:g.players[w].name, fan:winInfo(g,w,g.winner.tile,g.winner.selfDraw), fanNum:computeFan(g,w,g.winner.tile,g.winner.selfDraw), delta:g.winner.deltas[w], hand:g.players[w].hand.concat([g.winner.tile]) }))
     } : null
   };
 }
@@ -307,7 +336,7 @@ wss.on('connection', (ws)=>{
 function handleMsg(ws, m){
   if(m.type==='quickstart'){
     let code=genCode(); while(rooms[code]) code=genCode();
-    let room={ code, host:0, players:[null,null,null,null] };
+    let room={ code, host:0, players:[null,null,null,null], scores:[0,0,0,0] };
     rooms[code]=room;
     room.players[0]={ ws, name:(m.name||'玩家')+'', isBot:false, connected:true, seat:0 };
     ws.roomCode=code; ws.seat=0;
@@ -317,7 +346,7 @@ function handleMsg(ws, m){
   }
   if(m.type==='create'){
     let code=genCode(); while(rooms[code]) code=genCode();
-    let room={ code, host:0, players:[null,null,null,null] };
+    let room={ code, host:0, players:[null,null,null,null], scores:[0,0,0,0] };
     rooms[code]=room;
     room.players[0]={ ws, name:(m.name||'玩家')+'', isBot:false, connected:true, seat:0 };
     ws.roomCode=code; ws.seat=0;
