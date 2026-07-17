@@ -9,29 +9,30 @@
   html, body { margin: 0; padding: 0; }
   body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background:#0a7d4f; color:#fff; user-select:none; -webkit-user-select:none; }
   #app { max-width: 480px; margin: 0 auto; min-height: 100vh; display:flex; flex-direction:column; padding:6px; }
-  .topbar { display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:2px 4px; }
-  .topbar button { background:#ffce54; border:none; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:600; color:#333; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; font-size:15px; padding:6px 6px; }
+  .topbar button { background:#ffce54; border:none; border-radius:8px; padding:6px 12px; font-size:15px; font-weight:700; color:#333; }
   #msg { text-align:center; font-size:13px; min-height:18px; padding:2px; color:#ffe; }
   .middle { display:flex; flex:1; gap:4px; align-items:stretch; }
   .side { display:flex; flex-direction:column; justify-content:center; width:64px; }
   .center { flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; }
-  .opponent, .human { background:rgba(0,0,0,.12); border-radius:10px; padding:6px; margin:3px 0; }
-  .pname { font-size:12px; font-weight:600; margin-bottom:3px; }
+  .opponent, .human { background:rgba(0,0,0,.12); border-radius:10px; padding:8px; margin:3px 0; }
+  .pname { font-size:13px; font-weight:600; margin-bottom:3px; }
   .pname.active { color:#ffce54; }
-  .row, .hand-row, .discards, .melds { display:flex; flex-wrap:wrap; gap:2px; }
+  .row, .hand-row, .discards, .melds { display:flex; flex-wrap:wrap; gap:3px; }
   .melds { margin-bottom:3px; }
   .meld { display:flex; gap:1px; padding:1px; background:rgba(0,0,0,.15); border-radius:4px; }
   .discards { margin:3px 0; }
-  .tile { width:28px; height:38px; background:#fbfbf7; color:#222; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; line-height:1; box-shadow:0 1px 2px rgba(0,0,0,.35); border:1px solid #ddd; }
-  .tile.mini { width:20px; height:27px; font-size:11px; border-radius:4px; }
-  .tile.hand { width:30px; height:42px; font-size:16px; }
+  .tile { width:32px; height:44px; background:#fbfbf7; color:#222; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; line-height:1; box-shadow:0 2px 3px rgba(0,0,0,.35); border:1px solid #ddd; }
+  .tile.mini { width:22px; height:30px; font-size:12px; border-radius:5px; }
+  .tile.hand { width:36px; height:50px; font-size:19px; }
   .tile.wan { color:#c0392b; } .tile.tiao { color:#1e8449; } .tile.tong { color:#2471a3; } .tile.zi { color:#333; }
   .tile.zi.z-zhong { color:#c0392b; } .tile.zi.z-fa { color:#1e8449; } .tile.zi.z-bai { color:#2471a3; } .tile.zi.z-feng { color:#2c3e50; }
-  .tile-back { width:22px; height:30px; background:linear-gradient(135deg,#2c7a4b,#1c5c38); border-radius:4px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.15); }
-  .tile-back.mini { width:16px; height:22px; }
-  #actions { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; padding:6px; min-height:44px; }
-  .act-btn { background:#ffce54; color:#333; border:none; border-radius:8px; padding:8px 14px; font-size:15px; font-weight:700; min-width:64px; box-shadow:0 2px 0 #c9a227; }
+  .tile-back { width:24px; height:34px; background:linear-gradient(135deg,#2c7a4b,#1c5c38); border-radius:5px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.15); }
+  .tile-back.mini { width:18px; height:25px; }
+  #myHand { display:flex; gap:4px; flex-wrap:wrap; justify-content:center; padding:8px 4px; min-height:56px; overflow-x:auto; }
+  .act-btn { background:#ffce54; color:#333; border:none; border-radius:8px; padding:10px 16px; font-size:16px; font-weight:700; min-width:70px; box-shadow:0 2px 0 #c9a227; }
   .act-btn:active { transform:translateY(1px); box-shadow:0 1px 0 #c9a227; }
+  #actions { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; padding:8px; min-height:48px; }
   #overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); align-items:center; justify-content:center; z-index:50; padding:16px; }
   .result-card { background:#fff; color:#222; border-radius:14px; padding:20px; max-width:360px; width:100%; text-align:center; max-height:86vh; overflow:auto; }
   .result-card h2 { margin:0 0 10px; color:#c0392b; }
