@@ -160,6 +160,7 @@ function seatHTMLFull(p){
   return h;
 }
 function renderSpectator(v){
+  showGame();
   const P=v.players;
   document.getElementById('wallinfo').textContent='👁 观战中 · 牌墙:'+v.wallCount;
   const top=P[1], right=P[0], left=P[2], bottom=P[3];
@@ -186,6 +187,7 @@ let resultProcessed=false;
 function renderState(v){
   if(!v.winner) resultProcessed=false;
   mySeat=v.youSeat; turnSeat=v.turn; curScores=v.scores||[0,0,0,0];
+  showGame();
   if(mySeat<0){ renderSpectator(v); return; }
   document.getElementById('wallinfo').textContent='牌墙: '+v.wallCount;
   const P=v.players;
