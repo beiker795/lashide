@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>超级玛丽 · 杨树毛子联机棋牌室</title>
+<style>
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
+  html,body { margin:0; padding:0; height:100%; overflow:hidden; }
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; background:#5c94fc; display:flex; flex-direction:column; align-items:center; }
+  #top { width:100%; max-width:900px; display:flex; justify-content:space-between; align-items:center; padding:6px 10px; color:#fff; font-size:14px; }
+  #top button { background:#ffce54; border:none; border-radius:8px; padding:6px 12px; font-weight:700; color:#333; font-size:14px; }
+  #hud { display:flex; gap:16px; font-weight:700; text-shadow:1px 1px 0 #000; letter-spacing:.5px; }
+  #stage { position:relative; width:100%; max-width:900px; flex:1; display:flex; align-items:center; justify-content:center; }
+  canvas { display:block; width:100%; height:auto; background:#5c94fc; image-rendering:pixelated; border-top:3px solid rgba(0,0,0,.2); border-bottom:3px solid rgba(0,0,0,.2); }
+  /* 触屏手柄 */
+  #pad { position:fixed; inset:auto 0 0 0; display:flex; justify-content:space-between; align-items:flex-end; padding:14px 18px 22px; pointer-events:none; }
+  .grp { display:flex; gap:14px; pointer-events:auto; }
+  .btn { width:64px; height:64px; border-radius:50%; background:rgba(0,0,0,.28); border:2px solid rgba(255,255,255,.6); color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center; font-weight:800; }
+  .btn:active { background:rgba(255,206,84,.85); color:#333; }
+  #jump { width:80px; height:80px; background:rgba(220,60,60,.55); font-size:16px; }
+  #jump:active { background:rgba(255,206,84,.9); color:#333; }
+  /* 覆盖层 */
+  #overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:20; }
+  #overlay.hidden { display:none; }
+  .panel { background:#fff; color:#222; border-radius:16px; padding:22px 26px; text-align:center; max-width:320px; }
+  .panel h1 { margin:0 0 6px; color:#e52521; font-size:26px; letter-spacing:2px; }
+  .panel p { margin:6px 0; font-size:14px; color:#555; line-height:1.5; }
+  .panel .big { font-size:40px; margin:2px 0; }
+  .panel button { margin-top:12px; background:#ffce54; border:none; border-radius:10px; padding:12px 26px; font-size:16px; font-weight:800; color:#333; }
+  .kbd { font-size:12px; color:#888; margin-top:10px; }
+</style>
+</head>
+<body>
+  <div id="top">
+    <button onclick="location.href='home.html'">🏠 主页</button>
+    <div id="hud">
+      <span>🪙 <span id="coins">0</span></span>
+      <span>分 <span id="score">0</span></span>
+      <span>❤ <span id="lives">3</span></span>
+      <span>关 <span id="world">1</span></span>
+    </div>
+  </div>
+  <div id="stage"><canvas id="cv" width="768" height="416"></canvas></div>
+
+  <div id="pad">
+    <div class="grp">
+      <div class="btn" id="left">◀</div>
+      <div class="btn" id="right">▶</div>
+    </div>
+    <div class="grp">
+      <div class="btn" id="jump">跳</div>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <div class="panel">
+      <h1>SUPER 玛丽</h1>
+      <p>踩板栗仔、吃金币、顶问号砖，<br>跑到旗杆下方即可通关！</p>
+      <div class="big">🍄</div>
+      <button onclick="startGame()">开始游戏</button>
+      <div class="kbd">键盘：← → 移动 · 空格/↑ 跳 · Shift 加速<br>手机：屏幕下方按钮操作</div>
+    </div>
+  </div>
+
+<script>
+// ================= 常量 =================
+const TILE = 32;
+const ROWS = 13;                 // 画面高度 13 格 = 416px
+const VW = 768, VH = ROWS * TILE; // 视口宽高
+const GRAV = 0.72, MOVE = 3.0, RUN = 4.8, JUMP = -13.2, MAXFALL = 14;
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// ================= 关卡生成 =================
+// 字符含义：X 地面/实心  = 平台砖  ? 问号砖(出金币)  B 砖块  p 管道  o 金币  G 板栗仔  F 旗杆
+function buildLevel(cfg){
+  const W = cfg.width;
+  const g = Array.from({length:ROWS}, ()=>new Array(W).fill(' '));
+  const groundTop = ROWS - 2; // y=11,12 为地面
+  const isGap = (x)=> cfg.gaps.some(([a,b])=> x>=a && x<=b);
+  for(let x=0;x<W;x++){
+    if(!isGap(x)){ g[groundTop][x]='X'; g[groundTop+1][x]='X'; }
+  }
+  (cfg.pipes||[]).forEach(pp=>{ for(let i=0;i<pp.h;i++){ g[groundTop-1-i][pp.x]='p'; g[groundTop-1-i][pp.x+1]='p'; } });
+  (cfg.platforms||[]).forEach(pl=>{ for(let i=0;i<pl.w;i++) g[pl.y][pl.x+i]='='; });
+  (cfg.bricks||[]).forEach(b=>{ g[b.y][b.x]=b.t; });
+  (cfg.coins||[]).forEach(c=>{ g[c.y][c.x]='o'; });
+  const goombas=[]; (cfg.goombas||[]).forEach(gx=>{ goombas.push({x:gx*TILE, y:(groundTop-1)*TILE+4, vx:-0.9, vy:0, alive:true, w:26,h:28, sq:0}); });
+  return { grid:g, W, flagX:cfg.flag, goombas };
+}
+
+const LEVELS = [
+  { width:110, flag:104, gaps:[[26,28],[62,63]],
+    pipes:[{x:16,h:2},{x:44,h:3},{x:80,h:2}],
+    platforms:[{x:34,y:7,w:4},{x:52,y:6,w:3},{x:70,y:7,w:4},{x:90,y:6,w:3}],
+    bricks:[{x:20,y:8,t:'?'},{x:22,y:8,t:'B'},{x:23,y:8,t:'?'},{x:24,y:8,t:'B'},{x:23,y:4,t:'?'},
+            {x:48,y:8,t:'B'},{x:49,y:8,t:'?'},{x:50,y:8,t:'B'},{x:75,y:8,t:'?'},{x:88,y:8,t:'B'},{x:89,y:8,t:'?'}],
+    coins:[{x:35,y:6},{x:36,y:6},{x:53,y:5},{x:71,y:6},{x:72,y:6},{x:91,y:5},{x:20,y:9},{x:24,y:9},{x:64,y:10}],
+    goombas:[24,38,55,72,84,95] },
+
+  { width:120, flag:114, gaps:[[30,32],[54,56],[86,88]],
+    pipes:[{x:22,h:2},{x:66,h:3},{x:100,h:2}],
+    platforms:[{x:40,y:7,w:3},{x:46,y:5,w:3},{x:58,y:6,w:4},{x:74,y:7,w:3},{x:92,y:5,w:4}],
+    bricks:[{x:12,y:8,t:'?'},{x:13,y:8,t:'B'},{x:14,y:8,t:'?'},{x:25,y:5,t:'?'},{x:47,y:4,t:'?'},
+            {x:60,y:5,t:'B'},{x:61,y:5,t:'?'},{x:62,y:5,t:'B'},{x:78,y:8,t:'?'},{x:93,y:4,t:'?'},{x:94,y:4,t:'B'}],
+    coins:[{x:41,y:6},{x:47,y:3},{x:59,y:5},{x:60,y:4},{x:75,y:6},{x:92,y:4},{x:93,y:3},{x:12,y:9},{x:50,y:10}],
+    goombas:[28,42,58,70,80,96,108] }
+];
+
+// ================= 状态 =================
+let level, lvIdx=0, cameraX=0;
+let player, coins=0, score=0, lives=3;
+let running=false, floatCoins=[], particles=[];
+let animT=0;
+
+function loadLevel(i){
+  level = buildLevel(LEVELS[i]);
+  player = { x:2*TILE, y:(ROWS-3)*TILE, vx:0, vy:0, w:22, h:30, onGround:false, face:1, dead:false, win:false, invul:0 };
+  cameraX = 0; floatCoins=[]; particles=[];
+  document.getElementById('world').textContent = i+1;
+}
+
+// ================= 输入 =================
+const keys = { left:false, right:false, jump:false, run:false };
+let jumpLatch=false;
+addEventListener('keydown', e=>{
+  if(e.repeat) return;
+  if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=true;
+  else if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=true;
+  else if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW') keys.jump=true;
+  else if(e.code==='ShiftLeft'||e.code==='ShiftRight') keys.run=true;
+});
+addEventListener('keyup', e=>{
+  if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=false;
+  else if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=false;
+  else if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'){ keys.jump=false; jumpLatch=false; }
+  else if(e.code==='ShiftLeft'||e.code==='ShiftRight') keys.run=false;
+});
+function bindBtn(id, on){
+  const el=document.getElementById(id);
+  const set=(v)=>(e)=>{ e.preventDefault(); on(v); };
+  el.addEventListener('touchstart', set(true), {passive:false});
+  el.addEventListener('touchend', set(false), {passive:false});
+  el.addEventListener('touchcancel', set(false), {passive:false});
+  el.addEventListener('mousedown', set(true));
+  el.addEventListener('mouseup', set(false));
+  el.addEventListener('mouseleave', set(false));
+}
+bindBtn('left', v=>keys.left=v);
+bindBtn('right', v=>keys.right=v);
+bindBtn('jump', v=>{ keys.jump=v; if(!v) jumpLatch=false; });
+
+// ================= 瓦片工具 =================
+function tileAt(px,py){
+  const tx=Math.floor(px/TILE), ty=Math.floor(py/TILE);
+  if(ty<0||ty>=ROWS||tx<0||tx>=level.W) return { c:(ty>=ROWS?' ':'X'), tx, ty }; // 视口外上方视为空
+  return { c:level.grid[ty][tx], tx, ty };
+}
+function solid(c){ return c==='X'||c==='='||c==='?'||c==='B'||c==='p'||c==='U'; }
+
+// AABB 与瓦片碰撞（分轴处理）
+function collideX(ent){
+  const top=ent.y+2, bot=ent.y+ent.h-2;
+  if(ent.vx>0){
+    const nx=ent.x+ent.w+ent.vx;
+    for(let yy=top; yy<=bot; yy+=TILE/2){
+      const t=tileAt(nx,yy); if(solid(t.c)){ ent.x=t.tx*TILE-ent.w-0.01; ent.vx=0; return true; }
+    }
+  } else if(ent.vx<0){
+    const nx=ent.x+ent.vx;
+    for(let yy=top; yy<=bot; yy+=TILE/2){
+      const t=tileAt(nx,yy); if(solid(t.c)){ ent.x=(t.tx+1)*TILE+0.01; ent.vx=0; return true; }
+    }
+  }
+  return false;
+}
+function collideY(ent){
+  const lft=ent.x+2, rgt=ent.x+ent.w-2; ent.onGround=false;
+  if(ent.vy>0){
+    const ny=ent.y+ent.h+ent.vy;
+    for(let xx=lft; xx<=rgt; xx+=TILE/2){
+      const t=tileAt(xx,ny); if(solid(t.c)){ ent.y=t.ty*TILE-ent.h-0.01; ent.vy=0; ent.onGround=true; return true; }
+    }
+  } else if(ent.vy<0){
+    const ny=ent.y+ent.vy;
+    for(let xx=lft; xx<=rgt; xx+=TILE/2){
+      const t=tileAt(xx,ny); if(solid(t.c)){
+        // 顶到砖块
+        if(ent===player) headBump(t.tx,t.ty);
+        ent.y=(t.ty+1)*TILE+0.01; ent.vy=0; return true;
+      }
+    }
+  }
+  return false;
+}
+
+function headBump(tx,ty){
+  const c=level.grid[ty][tx];
+  if(c==='?'){ level.grid[ty][tx]='U'; spawnFloatCoin(tx,ty); score+=200; coins++; sync(); ping(880); }
+  else if(c==='B'){ // 砖块弹一下（不碎，经典小马里奥顶不碎）
+    particles.push({x:tx*TILE+16,y:ty*TILE,vy:-3,t:8,brick:true}); ping(300);
+  }
+}
+function spawnFloatCoin(tx,ty){ floatCoins.push({x:tx*TILE+8, y:ty*TILE-4, vy:-6, t:26}); }
+
+// ================= 主循环 =================
+function update(){
+  animT++;
+  if(player.dead || player.win){ return; }
+  const p=player;
+  const sp = keys.run?RUN:MOVE;
+  if(keys.left){ p.vx=-sp; p.face=-1; }
+  else if(keys.right){ p.vx=sp; p.face=1; }
+  else p.vx*=0.6;
+  if(Math.abs(p.vx)<0.1) p.vx=0;
+
+  if(keys.jump && p.onGround && !jumpLatch){ p.vy=JUMP; p.onGround=false; jumpLatch=true; ping(520); }
+  if(!keys.jump) jumpLatch=false;
+  // 短跳：松开上升键则减速上升
+  if(!keys.jump && p.vy<-4) p.vy=-4;
+
+  p.vy=Math.min(p.vy+GRAV, MAXFALL);
+  p.x+=p.vx; collideX(p);
+  collideY(p);
+  if(p.x<0){ p.x=0; p.vx=0; }
+  if(p.x>level.W*TILE-p.w) p.x=level.W*TILE-p.w;
+
+  // 掉坑
+  if(p.y>VH+40){ die(); return; }
+
+  // 金币收集
+  const pcx=Math.floor((p.x+p.w/2)/TILE), pcy=Math.floor((p.y+p.h/2)/TILE);
+  for(let yy=pcy-1; yy<=pcy+1; yy++) for(let xx=pcx-1; xx<=pcx+1; xx++){
+    if(yy<0||yy>=ROWS||xx<0||xx>=level.W) continue;
+    if(level.grid[yy][xx]==='o'){
+      const cxp=xx*TILE+16, cyp=yy*TILE+16;
+      if(Math.abs((p.x+p.w/2)-cxp)<22 && Math.abs((p.y+p.h/2)-cyp)<24){
+        level.grid[yy][xx]=' '; coins++; score+=100; sync(); ping(1000);
+      }
+    }
+  }
+
+  // 敌人
+  level.goombas.forEach(gm=>{
+    if(!gm.alive){ gm.sq=Math.max(0,gm.sq-1); return; }
+    gm.vy=Math.min(gm.vy+GRAV, MAXFALL);
+    gm.x+=gm.vx; if(collideX(gm)) gm.vx=-gm.vx;
+    // 简易边缘检测：前方无地面则转向
+    const aheadX = gm.vx<0 ? gm.x-2 : gm.x+gm.w+2;
+    const below = tileAt(aheadX, gm.y+gm.h+4);
+    if(!solid(below.c) && gm.onGround) gm.vx=-gm.vx;
+    collideY(gm);
+    if(gm.y>VH+60){ gm.alive=false; }
+    // 与玩家碰撞
+    if(p.invul<=0 && rectHit(p,gm)){
+      if(p.vy>1 && (p.y+p.h) - gm.y < 18){ // 踩顶
+        gm.alive=false; gm.sq=12; p.vy=JUMP*0.6; score+=200; sync(); ping(660);
+      } else {
+        die();
+      }
+    }
+  });
+  if(p.invul>0) p.invul--;
+
+  // 浮动金币动画
+  floatCoins.forEach(fc=>{ fc.y+=fc.vy; fc.vy+=0.4; fc.t--; });
+  floatCoins=floatCoins.filter(fc=>fc.t>0);
+  particles.forEach(pt=>{ pt.y+=pt.vy; pt.vy+=0.5; pt.t--; });
+  particles=particles.filter(pt=>pt.t>0);
+
+  // 通关（到达旗杆列）
+  if(Math.floor((p.x+p.w/2)/TILE) >= level.flagX-1){ winLevel(); }
+
+  // 相机
+  cameraX = Math.max(0, Math.min(p.x - VW*0.35, level.W*TILE - VW));
+}
+
+function rectHit(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
+
+function die(){
+  if(player.dead) return;
+  player.dead=true; ping(160);
+  lives--; sync();
+  setTimeout(()=>{
+    if(lives<=0){ gameOver(); }
+    else { loadLevel(lvIdx); }
+  }, 900);
+}
+function winLevel(){
+  if(player.win) return;
+  player.win=true; ping(1200);
+  score+=1000; sync();
+  setTimeout(()=>{
+    lvIdx++;
+    if(lvIdx>=LEVELS.length){ gameClear(); }
+    else { loadLevel(lvIdx); }
+  }, 1100);
+}
+
+// ================= 渲染 =================
+function draw(){
+  ctx.clearRect(0,0,VW,VH);
+  // 天空渐变
+  const sky=ctx.createLinearGradient(0,0,0,VH);
+  sky.addColorStop(0,'#5c94fc'); sky.addColorStop(1,'#8fc0ff');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,VW,VH);
+  drawClouds();
+  drawHills();
+
+  const x0=Math.floor(cameraX/TILE), x1=Math.min(level.W, x0+Math.ceil(VW/TILE)+2);
+  for(let ty=0; ty<ROWS; ty++){
+    for(let tx=x0; tx<x1; tx++){
+      const c=level.grid[ty][tx]; if(c===' ') continue;
+      const sx=tx*TILE-cameraX, sy=ty*TILE;
+      drawTile(c,sx,sy);
+    }
+  }
+  // 旗杆
+  drawFlag(level.flagX*TILE-cameraX);
+
+  // 浮动金币
+  floatCoins.forEach(fc=> drawCoin(fc.x-cameraX, fc.y, true));
+  // 砖屑
+  particles.forEach(pt=>{ ctx.fillStyle=pt.brick?'#c86432':'#fc0'; ctx.fillRect(pt.x-cameraX-4, pt.y, 8,8); });
+
+  // 敌人
+  level.goombas.forEach(gm=>{ if(gm.alive||gm.sq>0) drawGoomba(gm.x-cameraX, gm.y, gm); });
+
+  // 玩家
+  drawMario(player.x-cameraX, player.y);
+}
+
+function drawTile(c,x,y){
+  if(c==='X'){ // 地面
+    ctx.fillStyle='#c86432'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle='#8a3f18'; ctx.fillRect(x,y,TILE,4);
+    ctx.fillStyle='rgba(0,0,0,.12)'; ctx.fillRect(x+2,y+8,6,6); ctx.fillRect(x+18,y+16,6,6);
+  } else if(c==='='){ // 平台砖
+    ctx.fillStyle='#e08c3c'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle='#a85a20'; ctx.fillRect(x,y,TILE,3); ctx.fillRect(x,y+TILE-3,TILE,3);
+    ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.strokeRect(x+.5,y+.5,TILE-1,TILE-1);
+  } else if(c==='B'){ // 砖块
+    ctx.fillStyle='#c8641e'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle='rgba(0,0,0,.25)'; ctx.fillRect(x,y+15,TILE,2); ctx.fillRect(x+15,y,2,15); ctx.fillRect(x+7,y+17,2,15); ctx.fillRect(x+23,y+17,2,15);
+  } else if(c==='?'){ // 问号砖
+    const blink=(Math.floor(animT/16)%2===0);
+    ctx.fillStyle=blink?'#ffb800':'#e8a200'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle='#8a5a00'; ctx.strokeRect(x+.5,y+.5,TILE-1,TILE-1);
+    ctx.fillStyle='#fff'; ctx.font='bold 20px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('?', x+TILE/2, y+TILE/2+1);
+  } else if(c==='U'){ // 用过的砖
+    ctx.fillStyle='#9a7b3a'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.strokeStyle='rgba(0,0,0,.3)'; ctx.strokeRect(x+.5,y+.5,TILE-1,TILE-1);
+  } else if(c==='p'){ // 管道
+    ctx.fillStyle='#2fb62f'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle='#1c7c1c'; ctx.fillRect(x,y,3,TILE);
+    ctx.fillStyle='#7cf07c'; ctx.fillRect(x+TILE-6,y,3,TILE);
+  } else if(c==='o'){ drawCoin(x+16,y+16,false); }
+}
+
+function drawCoin(cx,cy,big){
+  const r=big?9:8;
+  ctx.save(); ctx.translate(cx,cy);
+  const w=Math.abs(Math.sin(animT/8))*r+2;
+  ctx.fillStyle='#ffd700'; ctx.beginPath(); ctx.ellipse(0,0,w,r,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#b8860b'; ctx.fillRect(-1.5,-r+2,3,r*2-4);
+  ctx.restore();
+}
+
+function drawMario(x,y){
+  const p=player; ctx.save();
+  if(p.invul>0 && Math.floor(animT/4)%2) ctx.globalAlpha=0.4;
+  const w=p.w, h=p.h;
+  if(p.dead){ ctx.globalAlpha=0.6; }
+  // 身体
+  ctx.fillStyle='#e52521'; // 帽/衣
+  ctx.fillRect(x+2,y,   w-4,8);        // 帽
+  ctx.fillRect(x,y+2,   w,4);          // 帽檐
+  ctx.fillStyle='#ffbb88'; ctx.fillRect(x+4,y+8,w-8,7); // 脸
+  ctx.fillStyle='#000'; ctx.fillRect(x + (p.face>0? w-9 : 5), y+10, 3,3); // 眼
+  ctx.fillStyle='#5a2d0c'; ctx.fillRect(x+2,y+12,4,3); // 胡
+  ctx.fillStyle='#2a4fd0'; ctx.fillRect(x+2,y+15,w-4,h-19); // 背带裤
+  ctx.fillStyle='#e52521'; ctx.fillRect(x,y+16,4,7); ctx.fillRect(x+w-4,y+16,4,7); // 手臂
+  // 腿（跑动摆动）
+  const step=(p.onGround && Math.abs(p.vx)>0.5 && Math.floor(animT/6)%2)?3:0;
+  ctx.fillStyle='#5a2d0c'; ctx.fillRect(x+3,y+h-4,6,4); ctx.fillRect(x+w-9+step,y+h-4,6,4);
+  ctx.restore();
+}
+
+function drawGoomba(x,y,gm){
+  if(!gm.alive && gm.sq>0){ // 被踩扁
+    ctx.fillStyle='#8a5a2b'; ctx.fillRect(x, y+gm.h-8, gm.w, 8); return;
+  }
+  ctx.fillStyle='#8a5a2b'; // 蘑菇帽
+  ctx.beginPath(); ctx.ellipse(x+gm.w/2, y+10, gm.w/2, 11, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#d8a878'; ctx.fillRect(x+3,y+16,gm.w-6,gm.h-16); // 脸
+  ctx.fillStyle='#fff'; ctx.fillRect(x+5,y+9,5,6); ctx.fillRect(x+gm.w-10,y+9,5,6); // 眼白
+  ctx.fillStyle='#000'; ctx.fillRect(x+7,y+11,3,4); ctx.fillRect(x+gm.w-8,y+11,3,4); // 瞳
+  ctx.fillStyle='#5a3a18'; ctx.fillRect(x+2,y+gm.h-3, 8,3); ctx.fillRect(x+gm.w-10,y+gm.h-3,8,3); // 脚
+}
+
+function drawFlag(x){
+  if(x<-40||x>VW+40) return;
+  ctx.fillStyle='#bbb'; ctx.fillRect(x, (ROWS-2)*TILE - 8*TILE, 5, 8*TILE); // 杆
+  ctx.fillStyle='#2fb62f'; ctx.beginPath(); // 旗
+  const fy=(ROWS-2)*TILE - 8*TILE + 6;
+  ctx.moveTo(x+5,fy); ctx.lineTo(x+5+30, fy+9); ctx.lineTo(x+5, fy+18); ctx.fill();
+  ctx.fillStyle='#ffd700'; ctx.beginPath(); ctx.arc(x+2.5, (ROWS-2)*TILE-8*TILE-2, 5,0,Math.PI*2); ctx.fill(); // 顶球
+}
+
+let cloudSeed=[[80,40],[300,70],[560,50],[760,90],[1000,60]];
+function drawClouds(){
+  ctx.fillStyle='rgba(255,255,255,.9)';
+  cloudSeed.forEach(([cx,cy])=>{
+    const x=((cx - cameraX*0.3)% (level? level.W*TILE:2000)); const px=x<-100?x+ (level.W*TILE):x;
+    puff(px,cy);
+  });
+}
+function puff(x,y){ ctx.beginPath(); ctx.arc(x,y,16,0,7); ctx.arc(x+18,y+4,20,0,7); ctx.arc(x+40,y,15,0,7); ctx.fill(); }
+function drawHills(){
+  ctx.fillStyle='#3fa63f';
+  for(let i=0;i<8;i++){
+    const bx=(i*260 - cameraX*0.5)% (level.W*TILE+400);
+    const px=bx<-200?bx+level.W*TILE+400:bx;
+    ctx.beginPath(); ctx.moveTo(px, (ROWS-2)*TILE); ctx.quadraticCurveTo(px+70,(ROWS-2)*TILE-90, px+140,(ROWS-2)*TILE); ctx.fill();
+  }
+}
+
+// ================= 音效（WebAudio 简单音） =================
+let actx=null;
+function ping(freq){
+  try{
+    if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type='square'; o.frequency.value=freq; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(0.06, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+0.12);
+    o.start(); o.stop(actx.currentTime+0.13);
+  }catch(e){}
+}
+
+// ================= HUD / 流程 =================
+function sync(){
+  document.getElementById('coins').textContent=coins;
+  document.getElementById('score').textContent=score;
+  document.getElementById('lives').textContent=Math.max(0,lives);
+}
+function showOverlay(html){ const o=document.getElementById('overlay'); o.querySelector('.panel').innerHTML=html; o.classList.remove('hidden'); }
+function hideOverlay(){ document.getElementById('overlay').classList.add('hidden'); }
+
+function startGame(){
+  try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); actx.resume&&actx.resume(); }catch(e){}
+  lvIdx=0; coins=0; score=0; lives=3; sync();
+  loadLevel(0); hideOverlay(); running=true;
+}
+function gameOver(){
+  running=false;
+  showOverlay('<h1>游戏结束</h1><div class="big">💀</div><p>得分 '+score+' · 金币 '+coins+'</p><button onclick="startGame()">再来一次</button>');
+}
+function gameClear(){
+  running=false;
+  showOverlay('<h1>通关啦！</h1><div class="big">🏆</div><p>你救出了公主！<br>总得分 '+score+' · 金币 '+coins+'</p><button onclick="startGame()">再玩一遍</button>');
+}
+
+// ================= 循环 =================
+function loop(){
+  if(running) update();
+  if(level) draw();
+  requestAnimationFrame(loop);
+}
+loadLevel(0); // 预载首关用于背景
+draw();
+loop();
+</script>
+</body>
+</html>
