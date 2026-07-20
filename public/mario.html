@@ -29,6 +29,26 @@
   .panel .big { font-size:40px; margin:2px 0; }
   .panel button { margin-top:12px; background:#ffce54; border:none; border-radius:10px; padding:12px 26px; font-size:16px; font-weight:800; color:#333; }
   .kbd { font-size:12px; color:#888; margin-top:10px; }
+
+  /* ===== 横屏适配 ===== */
+  #rotate { display:none; position:fixed; inset:0; z-index:50; background:#1b3a8f; color:#fff; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  #rotate .ico { font-size:72px; animation:rot 1.8s ease-in-out infinite; }
+  #rotate p { font-size:18px; margin-top:14px; letter-spacing:1px; }
+  @keyframes rot { 0%,100%{ transform:rotate(0) } 50%{ transform:rotate(90deg) } }
+
+  /* 横屏：画面按高度充满，手柄放大靠边 */
+  @media (orientation: landscape){
+    #stage { width:100%; }
+    canvas { width:auto; height:100%; max-width:100%; }
+    #pad { padding:18px 44px 26px; }
+    .btn { width:74px; height:74px; font-size:30px; }
+    #jump { width:94px; height:94px; font-size:18px; }
+  }
+  /* 竖屏手机：提示横屏，隐藏手柄 */
+  @media (orientation: portrait) and (pointer: coarse){
+    #rotate { display:flex; }
+    #pad { display:none; }
+  }
 </style>
 </head>
 <body>
@@ -61,6 +81,11 @@
       <button onclick="startGame()">开始游戏</button>
       <div class="kbd">键盘：← → 移动 · 空格/↑ 跳 · Shift 加速<br>手机：屏幕下方按钮操作</div>
     </div>
+  </div>
+
+  <div id="rotate">
+    <div class="ico">📱</div>
+    <p>请横屏游玩，效果更佳</p>
   </div>
 
 <script>
