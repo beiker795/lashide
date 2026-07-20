@@ -6,7 +6,7 @@
 <title>超级玛丽 · 杨树毛子联机棋牌室</title>
 <style>
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
-  html,body { margin:0; padding:0; height:100%; overflow:hidden; }
+  html,body { margin:0; padding:0; height:100%; overflow:hidden; touch-action:none; }
   body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; background:#5c94fc; display:flex; flex-direction:column; align-items:center; }
   #top { width:100%; max-width:900px; display:flex; justify-content:space-between; align-items:center; padding:6px 10px; color:#fff; font-size:14px; }
   #top button { background:#ffce54; border:none; border-radius:8px; padding:6px 12px; font-weight:700; color:#333; font-size:14px; }
@@ -14,9 +14,9 @@
   #stage { position:relative; width:100%; max-width:900px; flex:1; display:flex; align-items:center; justify-content:center; }
   canvas { display:block; width:100%; height:auto; background:#5c94fc; image-rendering:pixelated; border-top:3px solid rgba(0,0,0,.2); border-bottom:3px solid rgba(0,0,0,.2); }
   /* 触屏手柄 */
-  #pad { position:fixed; inset:auto 0 0 0; display:flex; justify-content:space-between; align-items:flex-end; padding:14px 18px 22px; pointer-events:none; }
+  #pad { position:fixed; inset:auto 0 0 0; display:flex; justify-content:space-between; align-items:flex-end; padding:14px 18px 22px; pointer-events:none; z-index:10; }
   .grp { display:flex; gap:14px; pointer-events:auto; }
-  .btn { width:64px; height:64px; border-radius:50%; background:rgba(0,0,0,.28); border:2px solid rgba(255,255,255,.6); color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center; font-weight:800; }
+  .btn { width:64px; height:64px; border-radius:50%; background:rgba(0,0,0,.28); border:2px solid rgba(255,255,255,.6); color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center; font-weight:800; pointer-events:auto; touch-action:none; }
   .btn:active { background:rgba(255,206,84,.85); color:#333; }
   #jump { width:80px; height:80px; background:rgba(220,60,60,.55); font-size:16px; }
   #jump:active { background:rgba(255,206,84,.9); color:#333; }
@@ -126,32 +126,45 @@ function loadLevel(i){
 // ================= 输入 =================
 const keys = { left:false, right:false, jump:false, run:false };
 let jumpLatch=false;
+let jumpRequest=false;
 addEventListener('keydown', e=>{
   if(e.repeat) return;
   if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=true;
   else if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=true;
-  else if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW') keys.jump=true;
+  else if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'){ keys.jump=true; jumpRequest=true; }
   else if(e.code==='ShiftLeft'||e.code==='ShiftRight') keys.run=true;
 });
 addEventListener('keyup', e=>{
   if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=false;
   else if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=false;
-  else if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'){ keys.jump=false; jumpLatch=false; }
+  else if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'){ keys.jump=false; jumpRequest=false; }
   else if(e.code==='ShiftLeft'||e.code==='ShiftRight') keys.run=false;
 });
 function bindBtn(id, on){
   const el=document.getElementById(id);
   const set=(v)=>(e)=>{ e.preventDefault(); on(v); };
-  el.addEventListener('touchstart', set(true), {passive:false});
-  el.addEventListener('touchend', set(false), {passive:false});
-  el.addEventListener('touchcancel', set(false), {passive:false});
-  el.addEventListener('mousedown', set(true));
-  el.addEventListener('mouseup', set(false));
-  el.addEventListener('mouseleave', set(false));
+  if('PointerEvent' in window){
+    el.addEventListener('pointerdown', set(true), {passive:false});
+    el.addEventListener('pointerup', set(false), {passive:false});
+    el.addEventListener('pointercancel', set(false), {passive:false});
+    el.addEventListener('pointerleave', set(false), {passive:false});
+  } else {
+    el.addEventListener('touchstart', set(true), {passive:false});
+    el.addEventListener('touchend', set(false), {passive:false});
+    el.addEventListener('touchcancel', set(false), {passive:false});
+    el.addEventListener('mousedown', set(true));
+    el.addEventListener('mouseup', set(false));
+    el.addEventListener('mouseleave', set(false));
+  }
+}
+function tryJump(){
+  if(player && player.onGround && !jumpLatch){
+    player.vy=JUMP; player.onGround=false; jumpLatch=true; jumpRequest=false; ping(520);
+  }
 }
 bindBtn('left', v=>keys.left=v);
 bindBtn('right', v=>keys.right=v);
-bindBtn('jump', v=>{ keys.jump=v; if(!v) jumpLatch=false; });
+bindBtn('jump', v=>{ keys.jump=v; if(v){ jumpRequest=true; tryJump(); } else { jumpRequest=false; jumpLatch=false; } });
 
 // ================= 瓦片工具 =================
 function tileAt(px,py){
@@ -217,7 +230,7 @@ function update(){
   else p.vx*=0.6;
   if(Math.abs(p.vx)<0.1) p.vx=0;
 
-  if(keys.jump && p.onGround && !jumpLatch){ p.vy=JUMP; p.onGround=false; jumpLatch=true; ping(520); }
+  if((keys.jump || jumpRequest) && p.onGround && !jumpLatch){ p.vy=JUMP; p.onGround=false; jumpLatch=true; jumpRequest=false; ping(520); }
   if(!keys.jump) jumpLatch=false;
   // 短跳：松开上升键则减速上升
   if(!keys.jump && p.vy<-4) p.vy=-4;
