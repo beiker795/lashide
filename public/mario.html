@@ -43,7 +43,7 @@
     #homeMini { display:block; }
     #stage { width:100%; }
     canvas { width:auto; height:100%; max-width:100%; }
-    #pad { padding:18px 44px 26px; }
+    #pad { position:static; bottom:auto; padding:18px 44px calc(26px + env(safe-area-inset-bottom)); }
     .btn { width:74px; height:74px; font-size:30px; }
     #jump { width:94px; height:94px; font-size:18px; }
   }
@@ -375,11 +375,12 @@ function draw(){
 function drawHUD(){
   ctx.save();
   ctx.fillStyle='rgba(0,0,0,.32)';
-  ctx.fillRect(6,6,230,22);
+  const w=230, h=22, x=VW-w-6, y=6;
+  ctx.fillRect(x,y,w,h);
   ctx.fillStyle='#fff';
   ctx.font='bold 14px "Microsoft YaHei","PingFang SC",sans-serif';
   ctx.textAlign='left'; ctx.textBaseline='top';
-  ctx.fillText('金币'+coins+' 分'+score+' 命'+Math.max(0,lives)+' 关'+(lvIdx+1), 12, 9);
+  ctx.fillText('金币'+coins+' 分'+score+' 命'+Math.max(0,lives)+' 关'+(lvIdx+1), x+6, y+3);
   ctx.restore();
 }
 
