@@ -35,9 +35,12 @@
   #rotate .ico { font-size:72px; animation:rot 1.8s ease-in-out infinite; }
   #rotate p { font-size:18px; margin-top:14px; letter-spacing:1px; }
   @keyframes rot { 0%,100%{ transform:rotate(0) } 50%{ transform:rotate(90deg) } }
+  #homeMini { display:none; position:fixed; top:6px; left:6px; z-index:15; background:rgba(255,206,84,.92); border:none; border-radius:6px; padding:4px 8px; font-size:13px; font-weight:700; color:#333; }
 
-  /* 横屏：画面按高度充满，手柄放大靠边 */
+  /* 横屏：画面按高度充满，手柄放大靠边，隐藏顶部栏，浮出迷你主页按钮 */
   @media (orientation: landscape){
+    #top { display:none; }
+    #homeMini { display:block; }
     #stage { width:100%; }
     canvas { width:auto; height:100%; max-width:100%; }
     #pad { padding:18px 44px 26px; }
@@ -62,6 +65,7 @@
     </div>
   </div>
   <div id="stage"><canvas id="cv" width="768" height="416"></canvas></div>
+  <button id="homeMini" onclick="location.href='home.html'">🏠 主页</button>
 
   <div id="pad">
     <div class="grp">
@@ -365,6 +369,18 @@ function draw(){
 
   // 玩家
   drawMario(player.x-cameraX, player.y);
+  drawHUD();
+}
+
+function drawHUD(){
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.32)';
+  ctx.fillRect(6,6,230,22);
+  ctx.fillStyle='#fff';
+  ctx.font='bold 14px "Microsoft YaHei","PingFang SC",sans-serif';
+  ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillText('金币'+coins+' 分'+score+' 命'+Math.max(0,lives)+' 关'+(lvIdx+1), 12, 9);
+  ctx.restore();
 }
 
 function drawTile(c,x,y){
