@@ -14,7 +14,7 @@
   #stage { position:relative; width:100%; max-width:900px; flex:1; display:flex; align-items:center; justify-content:center; }
   canvas { display:block; width:100%; height:auto; background:#5c94fc; image-rendering:pixelated; border-top:3px solid rgba(0,0,0,.2); border-bottom:3px solid rgba(0,0,0,.2); }
   /* 触屏手柄 */
-  #pad { position:fixed; inset:auto 0 0 0; display:flex; justify-content:space-between; align-items:flex-end; padding:14px 18px 22px; pointer-events:none; z-index:10; }
+  #pad { position:fixed; inset:auto 0 0 0; display:flex; justify-content:space-between; align-items:flex-end; padding:16px 30px 24px; pointer-events:none; z-index:10; }
   .grp { display:flex; gap:14px; pointer-events:auto; }
   .btn { width:64px; height:64px; border-radius:50%; background:rgba(0,0,0,.28); border:2px solid rgba(255,255,255,.6); color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center; font-weight:800; pointer-events:auto; touch-action:none; }
   .btn:active { background:rgba(255,206,84,.85); color:#333; }
@@ -119,7 +119,7 @@ let animT=0;
 function loadLevel(i){
   level = buildLevel(LEVELS[i]);
   player = { x:2*TILE, y:(ROWS-3)*TILE, vx:0, vy:0, w:22, h:30, onGround:false, face:1, dead:false, win:false, invul:0 };
-  cameraX = 0; floatCoins=[]; particles=[];
+  cameraX = 0; floatCoins=[]; particles=[]; jumpRequest=false; jumpLatch=false;
   document.getElementById('world').textContent = i+1;
 }
 
@@ -137,7 +137,7 @@ addEventListener('keydown', e=>{
 addEventListener('keyup', e=>{
   if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=false;
   else if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=false;
-  else if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'){ keys.jump=false; jumpRequest=false; }
+  else if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'){ keys.jump=false; }
   else if(e.code==='ShiftLeft'||e.code==='ShiftRight') keys.run=false;
 });
 function bindBtn(id, on){
@@ -147,7 +147,6 @@ function bindBtn(id, on){
     el.addEventListener('pointerdown', set(true), {passive:false});
     el.addEventListener('pointerup', set(false), {passive:false});
     el.addEventListener('pointercancel', set(false), {passive:false});
-    el.addEventListener('pointerleave', set(false), {passive:false});
   } else {
     el.addEventListener('touchstart', set(true), {passive:false});
     el.addEventListener('touchend', set(false), {passive:false});
@@ -164,7 +163,7 @@ function tryJump(){
 }
 bindBtn('left', v=>keys.left=v);
 bindBtn('right', v=>keys.right=v);
-bindBtn('jump', v=>{ keys.jump=v; if(v){ jumpRequest=true; tryJump(); } else { jumpRequest=false; jumpLatch=false; } });
+bindBtn('jump', v=>{ keys.jump=v; if(v) jumpRequest=true; });
 
 // ================= 瓦片工具 =================
 function tileAt(px,py){
@@ -232,8 +231,6 @@ function update(){
 
   if((keys.jump || jumpRequest) && p.onGround && !jumpLatch){ p.vy=JUMP; p.onGround=false; jumpLatch=true; jumpRequest=false; ping(520); }
   if(!keys.jump) jumpLatch=false;
-  // 短跳：松开上升键则减速上升
-  if(!keys.jump && p.vy<-4) p.vy=-4;
 
   p.vy=Math.min(p.vy+GRAV, MAXFALL);
   p.x+=p.vx; collideX(p);
