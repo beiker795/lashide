@@ -60,7 +60,7 @@
     <div id="hud">
       <span>🪙 <span id="coins">0</span></span>
       <span>分 <span id="score">0</span></span>
-      <span>❤ <span id="lives">3</span></span>
+      <span>❤ <span id="lives">∞</span></span>
       <span>关 <span id="world">1</span></span>
     </div>
   </div>
@@ -141,7 +141,7 @@ const LEVELS = [
 
 // ================= 状态 =================
 let level, lvIdx=0, cameraX=0;
-let player, coins=0, score=0, lives=3;
+let player, coins=0, score=0, lives=Infinity;
 let running=false, floatCoins=[], particles=[];
 let animT=0;
 
@@ -321,10 +321,9 @@ function rectHit(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a
 function die(){
   if(player.dead) return;
   player.dead=true; ping(160);
-  lives--; sync();
+  sync();
   setTimeout(()=>{
-    if(lives<=0){ gameOver(); }
-    else { loadLevel(lvIdx); }
+    loadLevel(lvIdx); // 生命无限：死亡只重生，不扣命、不结束
   }, 900);
 }
 function winLevel(){
@@ -380,7 +379,7 @@ function drawHUD(){
   ctx.fillStyle='#fff';
   ctx.font='bold 14px "Microsoft YaHei","PingFang SC",sans-serif';
   ctx.textAlign='left'; ctx.textBaseline='top';
-  ctx.fillText('金币'+coins+' 分'+score+' 命'+Math.max(0,lives)+' 关'+(lvIdx+1), x+6, y+3);
+  ctx.fillText('金币'+coins+' 分'+score+' 命∞ 关'+(lvIdx+1), x+6, y+3);
   ctx.restore();
 }
 
@@ -496,14 +495,14 @@ function ping(freq){
 function sync(){
   document.getElementById('coins').textContent=coins;
   document.getElementById('score').textContent=score;
-  document.getElementById('lives').textContent=Math.max(0,lives);
+  document.getElementById('lives').textContent='∞';
 }
 function showOverlay(html){ const o=document.getElementById('overlay'); o.querySelector('.panel').innerHTML=html; o.classList.remove('hidden'); }
 function hideOverlay(){ document.getElementById('overlay').classList.add('hidden'); }
 
 function startGame(){
   try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); actx.resume&&actx.resume(); }catch(e){}
-  lvIdx=0; coins=0; score=0; lives=3; sync();
+  lvIdx=0; coins=0; score=0; lives=Infinity; sync();
   loadLevel(0); hideOverlay(); running=true;
 }
 function gameOver(){
