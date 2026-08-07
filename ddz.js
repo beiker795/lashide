@@ -134,13 +134,37 @@ function handleBid(room, seat, score) {
   // 叫3分或满3次叫分立即结束
   if (score === 3 || g.bidCount >= 3) { finishBidding(room); return; }
   g.bidTurn = (g.bidTurn + 1) % 3;
-  // 轮到机器人则自动叫（想叫但叫不过时自动过，保证轮转不卡死）
-  let p = room.players[g.bidTurn];
-  if (p.isBot) {
-    let botSeat = g.bidTurn;
-    setTimeout(() => { try { if (room.game === g && g.phase === 'bidding' && g.bidTurn === botSeat) { let want = botBid(botSeat, p.hand); handleBid(room, botSeat, want > g.lastBid ? want : 0); } } catch (e) { console.error('BOT_BID_ERR', e); } }, 500);
-  }
+  // 轮到机器人则自动叫（500ms 真响应 + 4s watchdog 兜底，防止 AI 异常时永久卡死）
+  scheduleBotBid(room);
   broadcast(room);
+}
+
+// 调度机器人叫分：500ms 内正常 botBid；4s 内若未推进则强制当作"不叫"继续轮转
+function scheduleBotBid(room, baseDelay) {
+  const g = room.game;
+  if (!g || g.phase !== 'bidding') return;
+  const botSeat = g.bidTurn;
+  const p = room.players[botSeat];
+  if (!p || !p.isBot) return;
+  const delay = typeof baseDelay === 'number' ? baseDelay : 500;
+  let fired = false;
+  const watchdog = setTimeout(() => {
+    if (fired) return;
+    if (room.game !== g || g.phase !== 'bidding' || g.bidTurn !== botSeat) return;
+    console.warn('BID_WATCHDOG force-pass seat=' + botSeat + ' room=' + room.code);
+    try { handleBid(room, botSeat, 0); } catch (e) { console.error('BID_WATCHDOG_ERR', e); }
+  }, Math.max(delay + 3500, 4000));
+  setTimeout(() => {
+    if (room.game !== g || g.phase !== 'bidding' || g.bidTurn !== botSeat) { fired = true; clearTimeout(watchdog); return; }
+    try {
+      let want = botBid(botSeat, p.hand);
+      fired = true; clearTimeout(watchdog);
+      handleBid(room, botSeat, want > g.lastBid ? want : 0);
+    } catch (e) {
+      console.error('BOT_BID_ERR', e);
+      // 主响应失败，watchdog 会兜底
+    }
+  }, delay);
 }
 
 function finishBidding(room) {
@@ -432,9 +456,9 @@ function handleDisconnect(ws, room) {
   // 对局中转为机器人
   p.isBot = true; p.connected = false; p.name = p.name + '🤖'; p.ws = null;
   const g = room.game;
-  if (g.phase === 'bidding' && g.bidTurn === seat) setTimeout(() => { if (room.game === g && g.phase === 'bidding' && g.bidTurn === seat) handleBid(room, seat, botBid(seat, p.hand)); }, 400);
+  if (g.phase === 'bidding' && g.bidTurn === seat) scheduleBotBid(room, 400);
   else if (g.phase === 'playing' && g.turn === seat) setTimeout(() => botStep(room, seat), 400);
   broadcast(room);
 }
 
-module.exports = { init, handle, handleDisconnect };
+module.exports = { init, handle, handleDisconnect, _test: { scheduleBotBid, newGame, handleBid } };

@@ -254,8 +254,35 @@ function renderState(m){
     }
   }
   renderActions(m);
+  watchBidStuck(m);
   if(g.winner){ showResult(g.winner, g.players); }
   else document.getElementById('result').classList.add('hidden');
+}
+
+// 叫分卡死监控：bidding 阶段超过 10 秒还卡住，提示用户重开
+let _bidStuckSince = 0, _bidStuckShown = false;
+function watchBidStuck(m){
+  const g = m;
+  const isMyTurn = m.yourActions && m.yourActions.type==='bid';
+  if(g.phase==='bidding' && !isMyTurn && m.bidTurn != null){
+    if(_bidStuckSince===0) _bidStuckSince = Date.now();
+    if(!_bidStuckShown && Date.now()-_bidStuckSince > 10000){
+      _bidStuckShown = true;
+      const a=document.getElementById('actions');
+      if(a && !document.getElementById('stuckBtn')){
+        const btn=document.createElement('button');
+        btn.id='stuckBtn';
+        btn.className='passbtn';
+        btn.textContent='叫分卡了？点我重开';
+        btn.style.marginTop='6px';
+        btn.onclick=()=>{ try{ if(ws) ws.close(); }catch(e){}; backLobby(); };
+        a.appendChild(btn);
+      }
+    }
+  } else {
+    _bidStuckSince=0; _bidStuckShown=false;
+    const ex=document.getElementById('stuckBtn'); if(ex) ex.remove();
+  }
 }
 
 function renderActions(m){
