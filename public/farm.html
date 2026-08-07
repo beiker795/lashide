@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>种菜小农庄 · 杨树毛子联机棋牌室</title>
+<style>
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
+  html,body { margin:0; padding:0; height:100%; overflow:hidden; touch-action:none; }
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; background:#7ec850; display:flex; flex-direction:column; align-items:center; }
+
+  #top { width:100%; max-width:560px; display:flex; justify-content:space-between; align-items:center; gap:8px;
+         padding:8px 12px calc(2px + env(safe-area-inset-top)); color:#fff; font-size:14px; }
+  #top .hud { display:flex; gap:12px; font-weight:800; text-shadow:1px 1px 0 rgba(0,0,0,.25); }
+  #top .hud span { background:rgba(0,0,0,.18); padding:5px 9px; border-radius:10px; }
+  #top button { background:#ffce54; border:none; border-radius:9px; padding:7px 12px; font-weight:800; color:#333; font-size:13px; }
+  #seedTag { background:rgba(255,255,255,.92); color:#333; border-radius:9px; padding:5px 9px; font-weight:800; font-size:13px; }
+
+  #stage { position:relative; width:100%; max-width:560px; flex:1; padding-bottom:96px; display:flex; }
+  canvas { display:block; width:100%; height:100%; }
+
+  /* 底部工具栏 */
+  #bar { position:fixed; left:0; right:0; bottom:0; z-index:10; display:flex; justify-content:center; gap:10px;
+         padding:8px 12px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(0deg, rgba(0,0,0,.28), rgba(0,0,0,0)); }
+  .tool { flex:1; max-width:120px; height:64px; border-radius:16px; border:2px solid rgba(255,255,255,.55);
+          background:rgba(0,0,0,.22); color:#fff; font-size:13px; font-weight:800; display:flex; flex-direction:column;
+          align-items:center; justify-content:center; gap:2px; touch-action:none; }
+  .tool .e { font-size:24px; line-height:1; }
+  .tool.on { background:#ffce54; color:#333; border-color:#fff; box-shadow:0 0 0 3px rgba(255,206,84,.5); }
+  .tool:active { transform:scale(.96); }
+
+  /* 浮出主页按钮（横屏隐藏顶栏时） */
+  #homeMini { display:none; position:fixed; top:calc(6px + env(safe-area-inset-top)); left:6px; z-index:15;
+              background:rgba(255,206,84,.92); border:none; border-radius:8px; padding:5px 9px; font-size:13px; font-weight:800; color:#333; }
+
+  /* 覆盖层 / 弹窗 */
+  #overlay, #shop { position:fixed; inset:0; z-index:20; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:18px; }
+  #overlay.hidden, #shop.hidden { display:none; }
+  .panel { background:#fff; color:#222; border-radius:18px; padding:22px 24px; width:100%; max-width:340px; text-align:center; }
+  .panel h1 { margin:0 0 6px; color:#3a8f2e; font-size:24px; letter-spacing:1px; }
+  .panel p { margin:6px 0; font-size:14px; color:#555; line-height:1.6; }
+  .panel .big { font-size:44px; margin:4px 0; }
+  .panel button { margin-top:12px; background:#ffce54; border:none; border-radius:10px; padding:12px 26px; font-size:16px; font-weight:800; color:#333; }
+  .kbd { font-size:12px; color:#888; margin-top:10px; line-height:1.6; }
+
+  .shop-item { display:flex; align-items:center; gap:10px; background:#f4f7f0; border-radius:12px; padding:10px 12px; margin:8px 0; }
+  .shop-item .ic { font-size:30px; width:40px; text-align:center; }
+  .shop-item .info { flex:1; text-align:left; }
+  .shop-item .info b { font-size:15px; }
+  .shop-item .info small { display:block; color:#888; font-size:12px; }
+  .shop-item button { background:#3a8f2e; color:#fff; border:none; border-radius:9px; padding:8px 12px; font-weight:800; font-size:13px; }
+  .shop-item button.sel { background:#ffce54; color:#333; }
+  .shop-item button:disabled { opacity:.4; }
+  .shop-close { margin-top:6px; background:#ddd !important; color:#333 !important; }
+
+  /* 提示气泡 */
+  #toast { position:fixed; left:50%; top:18%; transform:translateX(-50%); z-index:30; background:rgba(0,0,0,.78);
+           color:#fff; padding:10px 16px; border-radius:12px; font-size:14px; font-weight:700; opacity:0; transition:opacity .25s; pointer-events:none; }
+  #toast.show { opacity:1; }
+
+  /* 横屏：隐藏顶栏，浮出主页按钮，工具栏仍在 */
+  @media (orientation: landscape){
+    #top { display:none; }
+    #homeMini { display:block; }
+    #stage { padding-bottom:calc(96px + env(safe-area-inset-bottom)); }
+  }
+</style>
+</head>
+<body>
+  <div id="top">
+    <button onclick="location.href='home.html'">🏠 主页</button>
+    <div class="hud">
+      <span>🪙 <span id="coins">0</span></span>
+      <span>🧺 <span id="harvested">0</span></span>
+    </div>
+    <div id="seedTag">🌱 萝卜</div>
+  </div>
+
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <button id="homeMini" onclick="location.href='home.html'">🏠 主页</button>
+
+  <div id="bar">
+    <div class="tool on" id="t-plant"><div class="e">🌱</div><div>播种</div></div>
+    <div class="tool" id="t-water"><div class="e">💧</div><div>浇水</div></div>
+    <div class="tool" id="t-harvest"><div class="e">🧺</div><div>收获</div></div>
+    <div class="tool" id="t-shop"><div class="e">🛒</div><div>商店</div></div>
+  </div>
+
+  <div id="overlay">
+    <div class="panel">
+      <h1>种菜小农庄</h1>
+      <p>翻地播种、浇水施肥，<br>等蔬菜成熟就能卖钱！</p>
+      <div class="big">🥕🌽🍅</div>
+      <button onclick="startGame()">开始种菜</button>
+      <div class="kbd">点地块用下方工具操作<br>播种 → 浇水加速 → 成熟收获</div>
+    </div>
+  </div>
+
+  <div id="shop" class="hidden">
+    <div class="panel">
+      <h1>🛒 种子商店</h1>
+      <p>用金币买种子，点「选」设为播种作物</p>
+      <div id="shopList"></div>
+      <button class="shop-close" onclick="closeShop()">关闭</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+<script>
+"use strict";
+// ===== 作物配置 =====
+const CROPS = {
+  radish:   { name:'萝卜',   emoji:'🥕', cost:5,   sell:14,  grow:10 },
+  tomato:   { name:'番茄',   emoji:'🍅', cost:12,  sell:32,  grow:18 },
+  corn:     { name:'玉米',   emoji:'🌽', cost:22,  sell:58,  grow:28 },
+  strawberry:{name:'草莓',   emoji:'🍓', cost:35,  sell:92,  grow:36 },
+  pumpkin:  { name:'南瓜',   emoji:'🎃', cost:60,  sell:165, grow:50 },
+};
+const ORDER = ['radish','tomato','corn','strawberry','pumpkin'];
+const PLOTS = 12;
+const SAVE_KEY = 'yangshumao_farm_v1';
+
+// ===== 状态 =====
+let coins, seeds, plots, curSeed, harvested, tool, lastT;
+
+function defaultState(){
+  return {
+    coins: 50,
+    seeds: { radish:3, tomato:0, corn:0, strawberry:0, pumpkin:0 },
+    curSeed: 'radish',
+    harvested: 0,
+    plots: Array.from({length:PLOTS}, ()=>({state:'empty', crop:null, g:0, watered:false})),
+  };
+}
+function load(){
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (s && s.plots && s.plots.length===PLOTS) return s;
+  } catch(e){}
+  return defaultState();
+}
+function save(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify({coins,seeds,curSeed,harvested,plots})); } catch(e){} }
+
+let st = load();
+coins = st.coins; seeds = st.seeds; curSeed = st.curSeed; harvested = st.harvested; plots = st.plots;
+tool = 'plant'; lastT = performance.now();
+
+// ===== 画布 =====
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W=0, H=0, dpr=1;
+function resize(){
+  const r = cv.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio||1, 2.5);
+  cv.width = Math.max(1, Math.round(r.width*dpr));
+  cv.height = Math.max(1, Math.round(r.height*dpr));
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  W = r.width; H = r.height;
+}
+window.addEventListener('resize', resize);
+
+// 网格布局：竖屏 3 列 4 行，横屏 4 列 3 行
+function layout(){
+  const landscape = W >= H;
+  const cols = landscape ? 4 : 3;
+  const rows = Math.ceil(PLOTS/cols);
+  const padX = 14, padTop = 14, padBot = 14, gap = 12;
+  const availW = W - padX*2;
+  const availH = H - padTop - padBot;
+  const tw = (availW - gap*(cols-1)) / cols;
+  const th = (availH - gap*(rows-1)) / rows;
+  const size = Math.min(tw, th);
+  const gridW = size*cols + gap*(cols-1);
+  const gridH = size*rows + gap*(rows-1);
+  const ox = (W - gridW)/2;
+  const oy = padTop + (availH - gridH)/2;
+  const cells = [];
+  for (let i=0;i<PLOTS;i++){
+    const c = i % cols, r = Math.floor(i/cols);
+    cells.push({ x: ox + c*(size+gap), y: oy + r*(size+gap), s: size });
+  }
+  return cells;
+}
+
+// ===== 绘制 =====
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  // 背景
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#bfe89a'); g.addColorStop(1,'#8fd06a');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+  const cells = layout();
+  for (let i=0;i<PLOTS;i++){
+    const p = plots[i], c = cells[i];
+    // 地块底
+    if (p.state==='empty'){
+      ctx.fillStyle = '#6fb84a';
+      roundRect(c.x,c.y,c.s,c.s,14); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.18)';
+      ctx.font = (c.s*0.5)+'px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('🌿', c.x+c.s/2, c.y+c.s/2);
+    } else {
+      // 土壤
+      const sg = ctx.createLinearGradient(0,c.y,0,c.y+c.s);
+      sg.addColorStop(0,'#a9743f'); sg.addColorStop(1,'#7c5026');
+      ctx.fillStyle = sg;
+      roundRect(c.x,c.y,c.s,c.s,14); ctx.fill();
+      // 土纹
+      ctx.strokeStyle='rgba(0,0,0,.12)'; ctx.lineWidth=2;
+      for(let k=1;k<3;k++){ const yy=c.y+c.s*k/3; ctx.beginPath(); ctx.moveTo(c.x+8,yy); ctx.lineTo(c.x+c.s-8,yy); ctx.stroke(); }
+
+      if (p.state==='planted'){
+        const cr = CROPS[p.crop];
+        // 作物大小随成长
+        const sc = 0.42 + 0.5*Math.min(1,p.g);
+        const cy = c.y + c.s*0.56;
+        // 幼苗/成熟
+        if (p.g < 0.32){
+          ctx.font = (c.s*0.42)+'px serif';
+          ctx.fillText('🌱', c.x+c.s/2, cy);
+        } else {
+          ctx.font = (c.s*sc)+'px serif';
+          ctx.fillText(cr.emoji, c.x+c.s/2, cy);
+        }
+        // 浇水光泽
+        if (p.watered){
+          ctx.fillStyle='rgba(120,200,255,.35)';
+          roundRect(c.x,c.y,c.s,c.s,14); ctx.fill();
+        }
+        // 成熟发光
+        if (p.g>=1){
+          ctx.save();
+          ctx.shadowColor='rgba(255,230,120,.9)'; ctx.shadowBlur=18;
+          ctx.strokeStyle='rgba(255,230,120,.95)'; ctx.lineWidth=3;
+          roundRect(c.x+2,c.y+2,c.s-4,c.s-4,12); ctx.stroke();
+          ctx.restore();
+          // 闪光
+          const t = performance.now()/400;
+          ctx.font=(c.s*0.22)+'px serif';
+          ctx.fillText('✨', c.x+c.s*0.78 + Math.sin(t)*3, c.y+c.s*0.26);
+        }
+        // 成长进度条
+        const bw=c.s*0.7, bx=c.x+(c.s-bw)/2, by=c.y+c.s-12;
+        ctx.fillStyle='rgba(0,0,0,.25)'; roundRect(bx,by,bw,6,3); ctx.fill();
+        ctx.fillStyle = p.g>=1 ? '#ffd34d' : '#7fe07f';
+        roundRect(bx,by,bw*Math.min(1,p.g),6,3); ctx.fill();
+      }
+    }
+    // 边框
+    ctx.strokeStyle = (p.state==='empty') ? 'rgba(255,255,255,.25)' : 'rgba(0,0,0,.18)';
+    ctx.lineWidth=2; roundRect(c.x,c.y,c.s,c.s,14); ctx.stroke();
+  }
+  requestAnimationFrame(loop);
+}
+
+// ===== 成长逻辑 =====
+function update(dt){
+  for (const p of plots){
+    if (p.state==='planted' && p.g < 1){
+      const cr = CROPS[p.crop];
+      const speed = (p.watered ? 1.8 : 1.0) / cr.grow; // 每秒成长量
+      p.g = Math.min(1, p.g + speed*dt);
+    }
+  }
+}
+
+// ===== 主循环 =====
+function loop(now){
+  const dt = Math.min(0.1, (now - lastT)/1000);
+  lastT = now;
+  update(dt);
+  draw();
+}
+
+// ===== 交互 =====
+function plotAt(px,py){
+  const cells = layout();
+  for (let i=0;i<PLOTS;i++){
+    const c = cells[i];
+    if (px>=c.x && px<=c.x+c.s && py>=c.y && py<=c.y+c.s) return i;
+  }
+  return -1;
+}
+function applyTool(i){
+  const p = plots[i];
+  if (tool==='plant'){
+    if (p.state==='empty' || p.state==='tilled'){
+      if ((seeds[curSeed]||0) <= 0){ toast('没有'+CROPS[curSeed].name+'种子，去商店买'); openShop(); return; }
+      seeds[curSeed]--;
+      p.state='planted'; p.crop=curSeed; p.g=0; p.watered=false;
+      sfx(660); save();
+    } else if (p.state==='planted'){ toast('这块已经种了'+CROPS[p.crop].name); }
+  } else if (tool==='water'){
+    if (p.state==='planted'){
+      if (p.g>=1){ toast('已经成熟，快收获'); }
+      else { p.g = Math.min(1, p.g + 0.12); p.watered=true; sfx(520); save(); }
+    } else toast('这里没有要浇的菜');
+  } else if (tool==='harvest'){
+    if (p.state==='planted' && p.g>=1){
+      const cr = CROPS[p.crop];
+      const gain = Math.round(cr.sell * (p.watered?1.25:1));
+      coins += gain; harvested++;
+      p.state='empty'; p.crop=null; p.g=0; p.watered=false;
+      spark(i); sfx(880); save();
+    } else if (p.state==='planted'){ toast('还没成熟，再等等'); }
+    else toast('这里没菜可收');
+  }
+}
+
+// 输入
+function pointer(e){
+  if (!started) return;
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  const px = t.clientX - r.left, py = t.clientY - r.top;
+  const i = plotAt(px,py);
+  if (i>=0) applyTool(i);
+}
+cv.addEventListener('touchstart', pointer, {passive:false});
+cv.addEventListener('mousedown', (e)=>{ if(!e.touches) pointer(e); });
+
+// 工具栏
+function selectTool(name){
+  tool = name;
+  document.querySelectorAll('.tool').forEach(b=>b.classList.remove('on'));
+  const id = 't-'+name;
+  if (document.getElementById(id)) document.getElementById(id).classList.add('on');
+  if (name!=='shop'){ closeShop(); }
+}
+document.getElementById('t-plant').onclick = ()=>selectTool('plant');
+document.getElementById('t-water').onclick = ()=>selectTool('water');
+document.getElementById('t-harvest').onclick = ()=>selectTool('harvest');
+document.getElementById('t-shop').onclick = ()=>{ selectTool('shop'); openShop(); };
+
+// ===== 商店 =====
+function openShop(){
+  const list = document.getElementById('shopList');
+  list.innerHTML='';
+  for (const key of ORDER){
+    const cr = CROPS[key];
+    const owned = seeds[key]||0;
+    const div = document.createElement('div');
+    div.className='shop-item';
+    div.innerHTML = `<div class="ic">${cr.emoji}</div>
+      <div class="info"><b>${cr.name}</b><small>种子🪙${cr.cost} · 卖🪙${cr.sell} · ${cr.grow}秒熟 · 拥有${owned}</small></div>`;
+    const btn = document.createElement('button');
+    if (curSeed===key){ btn.textContent='已选'; btn.className='sel'; }
+    else btn.textContent='选';
+    btn.onclick = ()=>{ curSeed=key; save(); updateHUD(); openShop(); };
+    const buy = document.createElement('button');
+    buy.textContent='买🪙'+cr.cost;
+    buy.style.marginLeft='6px';
+    buy.disabled = coins < cr.cost;
+    buy.onclick = ()=>{
+      if (coins < cr.cost){ toast('金币不够'); return; }
+      coins -= cr.cost; seeds[key]=(seeds[key]||0)+1; sfx(700); save(); updateHUD(); openShop();
+    };
+    div.appendChild(btn); div.appendChild(buy);
+    list.appendChild(div);
+  }
+  document.getElementById('shop').classList.remove('hidden');
+}
+function closeShop(){ document.getElementById('shop').classList.add('hidden'); if(tool==='shop') selectTool('plant'); }
+
+// ===== HUD / 提示 =====
+function updateHUD(){
+  document.getElementById('coins').textContent = coins;
+  document.getElementById('harvested').textContent = harvested;
+  document.getElementById('seedTag').textContent = CROPS[curSeed].emoji + ' ' + CROPS[curSeed].name;
+}
+let toastT;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(()=>el.classList.remove('show'), 1400);
+}
+
+// ===== 收获粒子 =====
+const parts = [];
+function spark(i){
+  const cells = layout(); const c = cells[i];
+  for (let k=0;k<10;k++){
+    parts.push({ x:c.x+c.s/2, y:c.y+c.s/2, vx:(Math.random()-.5)*120, vy:-Math.random()*160-40, life:0.7, c:['#ffd34d','#fff','#ff9b3d'][k%3] });
+  }
+}
+setInterval(()=>{
+  for (let k=parts.length-1;k>=0;k--){
+    const p=parts[k]; p.life-=0.03; p.x+=p.vx*0.03; p.y+=p.vy*0.03; p.vy+=400*0.03;
+    if (p.life<=0) parts.splice(k,1);
+  }
+  if (parts.length){
+    for (const p of parts){ ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.c; ctx.fillRect(p.x-2,p.y-2,4,4); }
+    ctx.globalAlpha=1;
+  }
+}, 30);
+
+// ===== 音效（轻量 WebAudio）=====
+let actx;
+function sfx(freq){
+  try {
+    if (!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type='sine'; o.frequency.value=freq;
+    g.gain.setValueAtTime(0.12, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+0.12);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime+0.13);
+  } catch(e){}
+}
+
+// ===== 启动 =====
+let started = false;
+function startGame(){
+  started = true;
+  document.getElementById('overlay').classList.add('hidden');
+  if (actx && actx.state==='suspended') actx.resume();
+}
+function init(){
+  resize(); updateHUD();
+  requestAnimationFrame(loop);
+}
+// 首帧后若已有存档则直接进游戏（无需每次看开场）
+if (localStorage.getItem(SAVE_KEY)) startGame();
+init();
+window.addEventListener('load', resize);
+</script>
+</body>
+</html>
